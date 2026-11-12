@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UltraVPN · Панель устройств (Supabase)</title>
+  <style>
+    :root {
+      --bg: #0b0e14; --panel: #121722; --panel-2: #171e2b; --line: #263044;
+      --text: #e8edf7; --muted: #8b96ab; --accent: #6ee7b7; --accent-2: #38bdf8;
+      --red: #fb7185; --amber: #fbbf24; --green: #34d399; --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      background: radial-gradient(1200px 600px at 10% -10%, #16233a 0%, transparent 60%), var(--bg);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 16px 60px; }
+    header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+    .logo { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+      background: linear-gradient(145deg, var(--accent), var(--accent-2)); color: #081018; font-weight: 900; font-size: 20px; }
+    h1 { font-size: 20px; margin: 0; letter-spacing: -.02em; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .spacer { flex: 1; }
+    .btn { border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+      border-radius: 10px; padding: 8px 12px; transition: .15s; }
+    .btn:hover { border-color: #3b4b66; background: #1b2433; }
+    .btn.primary { background: linear-gradient(145deg, #34d399, #22c1a3); color: #062019; border: 0; font-weight: 700; }
+    .btn.danger { color: #ffd6dd; border-color: #5c2433; background: #2a141c; }
+    .btn.ghost { background: transparent; }
+    .btn.small { padding: 6px 9px; font-size: 12px; border-radius: 8px; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .stat { background: linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--panel);
+      border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px; }
+    .stat b { display: block; font-size: 24px; letter-spacing: -.03em; margin-bottom: 2px; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
+    .tab { border: 1px solid transparent; background: transparent; color: var(--muted); padding: 8px 12px; border-radius: 999px; }
+    .tab.active { background: var(--panel-2); border-color: var(--line); color: var(--text); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .search { flex: 1; min-width: 200px; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 10px; padding: 9px 12px; color: var(--text); outline: none; }
+    .muted { color: var(--muted); }
+    .empty { color: var(--muted); text-align: center; padding: 42px 12px; border: 1px dashed var(--line); border-radius: var(--radius); }
+    .device { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 14px; margin-bottom: 10px; }
+    .device.offline { opacity: .72; }
+    .device.blocked { border-color: #5c2433; box-shadow: inset 0 0 0 1px rgba(251,113,133,.12); }
+    .device-head { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #475569; display: inline-block; margin-right: 6px; }
+    .dot.on { background: var(--green); box-shadow: 0 0 0 4px rgba(52,211,153,.12); }
+    .device-name { font-weight: 700; font-size: 15px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px;
+      font-size: 11px; border: 1px solid var(--line); color: var(--muted); background: #0f1520; }
+    .badge.green { color: #b8ffe8; border-color: #1d5c48; background: #0c2a22; }
+    .badge.red { color: #ffd6dd; border-color: #5c2433; background: #2a141c; }
+    .badge.amber { color: #ffefc2; border-color: #5c4a1d; background: #2a2410; }
+    .meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; margin-top: 11px; }
+    .meta div { min-width: 0; }
+    .meta small { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .meta b { font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; padding-top: 11px; border-top: 1px solid #1d2533; }
+    .error { color: #ffb4c0; font-size: 12px; margin-top: 7px; overflow-wrap: anywhere; }
+    .list-item { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 14px; margin-bottom: 8px; }
+    .list-item .top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .list-item .text { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .list-item .reply { margin-top: 8px; padding: 8px 10px; background: #0c2a22; border-radius: 9px; color: #c8ffe9; font-size: 12px; }
+    .cmd { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; color: #9fb3d1; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 7px; border-bottom: 1px solid #1d2533; vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px);
+      background: #1f2937; border: 1px solid #374151; color: #fff; padding: 10px 14px;
+      border-radius: 10px; opacity: 0; pointer-events: none; transition: .2s; max-width: 90vw; z-index: 50; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.err { background: #3b1119; border-color: #7f1d1d; }
+    .login { max-width: 420px; margin: 12vh auto 0; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 20px; padding: 24px; }
+    .login h1 { margin-bottom: 6px; }
+    .field { margin-top: 13px; }
+    .field label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+    .input { width: 100%; background: #0d121b; border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 12px; color: var(--text); outline: none; }
+    .input:focus { border-color: #3b82f6; }
+    .hidden { display: none !important; }
+    @media (max-width: 720px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .wrap { padding: 16px 10px 50px; }
+      h1 { font-size: 17px; }
+    }
+  </style>
+</head>
+<body>
+<div class="login" id="loginView">
+  <div class="logo" style="margin-bottom:14px">U</div>
+  <h1>UltraVPN · Supabase</h1>
+  <div class="sub">Вход для администратора</div>
+  <div class="field"><label>Email</label><input class="input" id="email" type="email" autocomplete="username"></div>
+  <div class="field"><label>Пароль</label><input class="input" id="password" type="password" autocomplete="current-password"></div>
+  <div style="margin-top:16px"><button class="btn primary" id="loginBtn" style="width:100%">Войти</button></div>
+  <div class="muted" id="loginError" style="margin-top:10px;font-size:12px;color:#ffb4c0"></div>
+  <div class="muted" style="margin-top:14px;font-size:11px">
+    Аккаунт должен быть добавлен в таблицу <span class="cmd">admins</span>.
+  </div>
+</div>
+
+<div class="wrap hidden" id="appView">
+  <header>
+    <div class="logo">U</div>
+    <div><h1>UltraVPN · Панель устройств</h1><div class="sub" id="whoami">Supabase</div></div>
+    <div class="spacer"></div>
+    <button class="btn small" id="refreshBtn">Обновить</button>
+    <button class="btn small" id="logoutBtn">Выйти</button>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b id="statDevices">—</b><span>устройств</span></div>
+    <div class="stat"><b id="statOnline" style="color:var(--green)">—</b><span>онлайн</span></div>
+    <div class="stat"><b id="statBlocked" style="color:var(--red)">—</b><span>заблокировано</span></div>
+    <div class="stat"><b id="statFeedback" style="color:var(--amber)">—</b><span>новых обращений</span></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="devices">Устройства</button>
+    <button class="tab" data-tab="feedback">Обращения</button>
+    <button class="tab" data-tab="commands">Команды</button>
+    <button class="tab" data-tab="events">События</button>
+  </div>
+  <div id="view"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------ config
+  // Заполните после создания проекта Supabase.
+  var SUPABASE_URL = 'https://jzoilllbyfitlsxvaobd.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_T-yxdb2fgqyhsPa1Gk8TyA_ACPTWJ0i';
+
+  var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  var state = { data: { devices: [], commands: [], feedback: [], events: [] }, tab: 'devices', query: '', loading: false, email: '' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+  function toast(message, isError) {
+    var el = $('toast');
+    el.textContent = message;
+    el.className = 'toast show' + (isError ? ' err' : '');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () { el.className = 'toast'; }, 3600);
+  }
+  function bytes(value) {
+    var number = Number(value) || 0;
+    if (number <= 0) return '0 Б';
+    var units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    var index = 0;
+    while (number >= 1024 && index < units.length - 1) { number /= 1024; index += 1; }
+    return (number >= 10 ? number.toFixed(0) : number.toFixed(1)) + ' ' + units[index];
+  }
+  function time(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  function ago(value) {
+    if (!value) return 'никогда';
+    var seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+    if (seconds < 60) return seconds + ' с назад';
+    if (seconds < 3600) return Math.round(seconds / 60) + ' мин назад';
+    if (seconds < 86400) return Math.round(seconds / 3600) + ' ч назад';
+    return Math.round(seconds / 86400) + ' дн назад';
+  }
+  function statusBadge(value) {
+    var cls = value === 'done' ? 'green' : value === 'error' ? 'red' : value === 'expired' ? 'amber' : '';
+    return '<span class="badge ' + cls + '">' + esc(value || 'pending') + '</span>';
+  }
+  function commandId() {
+    return 'cmd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  // ------------------------------------------------------------------- auth
+  async function init() {
+    var session = await supabase.auth.getSession();
+    if (session.data.session) {
+      state.email = session.data.session.user.email || '';
+      showApp();
+      await load();
+      subscribe();
+    } else {
+      showLogin();
+    }
+    supabase.auth.onAuthStateChange(function (event, session2) {
+      if (event === 'SIGNED_IN' && session2) {
+        state.email = session2.user.email || '';
+        showApp();
+        load();
+        subscribe();
+      }
+      if (event === 'SIGNED_OUT') showLogin();
+    });
+  }
+  function showLogin() {
+    $('loginView').classList.remove('hidden');
+    $('appView').classList.add('hidden');
+  }
+  function showApp() {
+    $('loginView').classList.add('hidden');
+    $('appView').classList.remove('hidden');
+    $('whoami').textContent = (state.email || 'администратор') + ' · Supabase';
+  }
+  $('loginBtn').onclick = async function () {
+    $('loginError').textContent = '';
+    var result = await supabase.auth.signInWithPassword({
+      email: $('email').value.trim(),
+      password: $('password').value,
+    });
+    if (result.error) $('loginError').textContent = result.error.message;
+  };
+  $('password').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') $('loginBtn').click();
+  });
+  $('logoutBtn').onclick = function () { supabase.auth.signOut(); };
+
+  // ------------------------------------------------------------------- data
+  async function load() {
+    if (state.loading) return;
+    state.loading = true;
+    try {
+      var results = await Promise.all([
+        supabase.from('devices').select('*').eq('archived', false).order('last_seen', { ascending: false }),
+        supabase.from('commands').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('feedback').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('events').select('*').order('created_at', { ascending: false }).limit(100),
+      ]);
+      for (var i = 0; i < results.length; i += 1) {
+        if (results[i].error) throw results[i].error;
+      }
+      state.data = {
+        devices: results[0].data || [],
+        commands: results[1].data || [],
+        feedback: results[2].data || [],
+        events: results[3].data || [],
+      };
+      render();
+    } catch (error) {
+      toast(error.message || String(error), true);
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  function subscribe() {
+    if (state.channel) return;
+    state.channel = supabase.channel('ultravpn-panel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'commands' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'feedback' }, schedule)
+      .subscribe();
+  }
+  var reloadTimer = null;
+  function schedule() {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(load, 900);
+  }
+
+  // ----------------------------------------------------------------- render
+  function render() {
+    var data = state.data;
+    var now = Date.now();
+    var devices = data.devices.map(function (device) {
+      return Object.assign({}, device, {
+        online: device.last_seen && now - new Date(device.last_seen).getTime() < 15 * 60 * 1000,
+      });
+    });
+    var online = devices.filter(function (item) { return item.online; }).length;
+    var blocked = devices.filter(function (item) { return item.blocked; }).length;
+    var feedbackNew = data.feedback.filter(function (item) { return item.status === 'new'; }).length;
+    $('statDevices').textContent = devices.length;
+    $('statOnline').textContent = online;
+    $('statBlocked').textContent = blocked;
+    $('statFeedback').textContent = feedbackNew;
+
+    if (state.tab === 'devices') renderDevices(devices);
+    if (state.tab === 'feedback') renderFeedback(data.feedback);
+    if (state.tab === 'commands') renderCommands(data.commands);
+    if (state.tab === 'events') renderEvents(data.events);
+  }
+
+  function renderDevices(devices) {
+    if (!$('deviceList')) {
+      $('view').innerHTML = '<div class="toolbar"><input class="search" id="search" placeholder="Поиск по имени, HWID, серверу…">' +
+        '<button class="btn small" id="reloadBtn">Обновить</button></div><div id="deviceList"></div>';
+      $('search').oninput = function () { state.query = $('search').value; renderDeviceList(devices); };
+      $('reloadBtn').onclick = load;
+    }
+    renderDeviceList(devices);
+  }
+  function renderDeviceList(devices) {
+    var query = state.query.toLowerCase();
+    var list = devices.filter(function (device) {
+      if (!query) return true;
+      return [device.name, device.hwid, device.model, device.os, device.server, device.node_name]
+        .join(' ').toLowerCase().indexOf(query) >= 0;
+    });
+    var html = '';
+    if (!list.length) {
+      html = '<div class="empty">Устройств пока нет. Клиент появится здесь после первого heartbeat.</div>';
+    } else {
+      list.forEach(function (device) { html += deviceCard(device); });
+    }
+    $('deviceList').innerHTML = html;
+  }
+
+  function deviceCard(device) {
+    var cls = 'device' + (device.online ? '' : ' offline') + (device.blocked ? ' blocked' : '');
+    var stateBadge = device.blocked
+      ? '<span class="badge red">заблокировано</span>'
+      : device.online ? '<span class="badge green">онлайн</span>' : '<span class="badge">офлайн</span>';
+    var vpnBadge = device.vpn_state === 'on'
+      ? '<span class="badge green">VPN включён</span>'
+      : device.vpn_state === 'connecting'
+        ? '<span class="badge amber">подключение</span>'
+        : device.vpn_state === 'error'
+          ? '<span class="badge red">ошибка</span>'
+          : '<span class="badge">VPN выключен</span>';
+    var actions = '';
+    actions += '<button class="btn small" data-act="vpn_on" data-hwid="' + esc(device.hwid) + '">Включить VPN</button>';
+    actions += '<button class="btn small" data-act="vpn_off" data-hwid="' + esc(device.hwid) + '">Выключить VPN</button>';
+    actions += '<button class="btn small" data-act="sync_config" data-hwid="' + esc(device.hwid) + '">Синхронизировать</button>';
+    actions += '<button class="btn small" data-act="set_server" data-hwid="' + esc(device.hwid) + '">Сменить сервер</button>';
+    actions += '<button class="btn small" data-act="message" data-hwid="' + esc(device.hwid) + '">Сообщение</button>';
+    if (device.blocked) {
+      actions += '<button class="btn small primary" data-act="unblock" data-hwid="' + esc(device.hwid) + '">Разблокировать</button>';
+    } else {
+      actions += '<button class="btn small danger" data-act="block" data-hwid="' + esc(device.hwid) + '">Заблокировать</button>';
+    }
+    actions += '<button class="btn small ghost" data-act="archive" data-hwid="' + esc(device.hwid) + '">Скрыть</button>';
+
+    return '<div class="' + cls + '">' +
+      '<div class="device-head"><div style="flex:1;min-width:200px">' +
+        '<div class="device-name"><span class="dot ' + (device.online ? 'on' : '') + '"></span>' + esc(device.name || device.hwid) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:2px">' + esc(device.model || '') + ' · ' + esc(device.os || '') + ' ' + esc(device.os_version || '') + '</div>' +
+      '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' + stateBadge + vpnBadge + '</div></div>' +
+      '<div class="meta">' +
+        '<div><small>Версия</small><b>' + esc(device.app_version || '—') + '</b></div>' +
+        '<div><small>Сервер</small><b title="' + esc(device.node_name) + '">' + esc(device.node_name || device.server || '—') + '</b></div>' +
+        '<div><small>Трафик сессии</small><b>' + bytes((device.session_down || 0) + (device.session_up || 0)) + '</b></div>' +
+        '<div><small>Всего</small><b>' + bytes((device.total_down || 0) + (device.total_up || 0)) + '</b></div>' +
+        '<div><small>Последняя связь</small><b>' + esc(ago(device.last_seen)) + '</b></div>' +
+        '<div><small>Сеть</small><b title="' + esc(device.network) + '">' + esc(device.network || '—') + '</b></div>' +
+        '<div><small>HWID</small><b title="' + esc(device.hwid) + '">' + esc(device.hwid) + '</b></div>' +
+        '<div><small>IP</small><b>' + esc(device.ip || '—') + '</b></div>' +
+        '<div><small>Heartbeat</small><b>' + esc(time(device.last_seen)) + '</b></div>' +
+      '</div>' +
+      (device.last_error ? '<div class="error">Ошибка: ' + esc(device.last_error) + '</div>' : '') +
+      '<div class="actions">' + actions + '</div></div>';
+  }
+
+  function renderFeedback(items) {
+    if (!items.length) { $('view').innerHTML = '<div class="empty">Обращений пока нет.</div>'; return; }
+    var html = '';
+    items.forEach(function (item) {
+      var status = item.status === 'new' ? '<span class="badge amber">новое</span>' :
+        item.status === 'replied' ? '<span class="badge green">отвечено</span>' : '<span class="badge">прочитано</span>';
+      html += '<div class="list-item"><div class="top">' + status + '<b>' + esc(item.name || item.hwid) + '</b>' +
+        '<span class="muted" style="font-size:11px">' + esc(time(item.created_at)) + '</span><span style="flex:1"></span>' +
+        (item.status !== 'read' ? '<button class="btn small" data-fb="read" data-id="' + esc(item.id) + '">Прочитано</button>' : '') +
+        '<button class="btn small primary" data-fb="reply" data-id="' + esc(item.id) + '">Ответить</button></div>' +
+        '<div class="text">' + esc(item.message) + '</div>' +
+        (item.contact ? '<div class="muted" style="font-size:11px;margin-top:5px">Контакт: ' + esc(item.contact) + '</div>' : '') +
+        (item.reply ? '<div class="reply">Ответ: ' + esc(item.reply) + '</div>' : '') +
+        (item.diagnostics && Object.keys(item.diagnostics).length
+          ? '<details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">Диагностика</summary><pre class="cmd" style="white-space:pre-wrap;margin:7px 0 0">' + esc(JSON.stringify(item.diagnostics, null, 2)) + '</pre></details>'
+          : '') + '</div>';
+    });
+    $('view').innerHTML = html;
+  }
+
+  function renderCommands(items) {
+    if (!items.length) { $('view').innerHTML = '<div class="empty">Команд пока нет.</div>'; return; }
+    var rows = items.map(function (item) {
+      return '<tr><td class="cmd">' + esc(item.type) + '<br>' + esc(item.id) + '</td><td class="cmd">' + esc(item.hwid) + '</td>' +
+        '<td>' + statusBadge(item.status) + '</td><td>' + esc(time(item.created_at)) + '</td><td>' + esc(item.result || '') + '</td></tr>';
+    }).join('');
+    $('view').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Команда</th><th>Устройство</th><th>Статус</th><th>Создана</th><th>Результат</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function renderEvents(items) {
+    if (!items.length) { $('view').innerHTML = '<div class="empty">Событий пока нет.</div>'; return; }
+    var rows = items.map(function (item) {
+      return '<tr><td>' + esc(time(item.created_at)) + '</td><td class="cmd">' + esc(item.hwid) + '</td><td>' + esc(item.type) + '</td><td>' + esc(item.message) + '</td></tr>';
+    }).join('');
+    $('view').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Время</th><th>Устройство</th><th>Тип</th><th>Сообщение</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  // ---------------------------------------------------------------- actions
+  async function addCommand(hwid, type, args) {
+    var id = commandId();
+    var result = await supabase.from('commands').insert({
+      id: id,
+      hwid: hwid,
+      type: type,
+      args: args || {},
+      status: 'pending',
+      created_by: state.email,
+      expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+    });
+    if (result.error) throw result.error;
+    if (type === 'block' || type === 'unblock') {
+      var update = await supabase.from('devices').update({ blocked: type === 'block' }).eq('hwid', hwid);
+      if (update.error) throw update.error;
+    }
+    await supabase.from('events').insert({
+      hwid: hwid, type: 'command', message: 'Команда ' + type, data: { id: id, args: args || {}, by: state.email },
+    });
+    await load();
+  }
+
+  document.addEventListener('click', async function (event) {
+    var tab = event.target.closest('[data-tab]');
+    if (tab) {
+      state.tab = tab.getAttribute('data-tab');
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (item) {
+        item.classList.toggle('active', item === tab);
+      });
+      $('view').innerHTML = '';
+      render();
+      return;
+    }
+
+    var action = event.target.closest('[data-act]');
+    if (action) {
+      var hwid = action.getAttribute('data-hwid');
+      var type = action.getAttribute('data-act');
+      try {
+        if (type === 'block' && !confirm('Заблокировать устройство? VPN будет отключён.')) return;
+        if (type === 'archive' && !confirm('Скрыть устройство из панели?')) return;
+        if (type === 'message') {
+          var text = prompt('Сообщение на устройство:');
+          if (!text) return;
+          await addCommand(hwid, 'message', { text: text, title: 'Сообщение от администратора' });
+          toast('Сообщение отправлено');
+          return;
+        }
+        if (type === 'set_server') {
+          var query = prompt('Название или часть названия сервера (например, Германия).\nОставьте пустым для автовыбора:', '');
+          if (query === null) return;
+          await addCommand(hwid, 'set_server', query.trim() ? { query: query.trim() } : { auto: true });
+          toast('Команда отправлена');
+          return;
+        }
+        if (type === 'archive') {
+          var archived = await supabase.from('devices').update({ archived: true }).eq('hwid', hwid);
+          if (archived.error) throw archived.error;
+          await load();
+          toast('Устройство скрыто');
+          return;
+        }
+        await addCommand(hwid, type, {});
+        toast('Команда отправлена');
+      } catch (error) {
+        toast(error.message || String(error), true);
+      }
+      return;
+    }
+
+    var fb = event.target.closest('[data-fb]');
+    if (fb) {
+      var id = fb.getAttribute('data-id');
+      try {
+        if (fb.getAttribute('data-fb') === 'read') {
+          var read = await supabase.from('feedback').update({ status: 'read' }).eq('id', id);
+          if (read.error) throw read.error;
+          await load();
+          toast('Отмечено прочитанным');
+        } else {
+          var reply = prompt('Ответ пользователю (придёт сообщением на устройство):');
+          if (!reply) return;
+          var feedbackRow = state.data.feedback.find(function (item) { return item.id === id; });
+          var updated = await supabase.from('feedback').update({
+            reply: reply, status: 'replied', replied_at: new Date().toISOString(),
+          }).eq('id', id);
+          if (updated.error) throw updated.error;
+          if (feedbackRow) await addCommand(feedbackRow.hwid, 'message', { text: reply, title: 'Ответ поддержки' });
+          await load();
+          toast('Ответ отправлен');
+        }
+      } catch (error) {
+        toast(error.message || String(error), true);
+      }
+    }
+  });
+
+  $('refreshBtn').onclick = load;
+  setInterval(function () { if (!$('appView').classList.contains('hidden')) load(); }, 8000);
+  init();
+})();
+</script>
+</body>
+</html>
