@@ -205,8 +205,9 @@
       if (event === 'SIGNED_IN' && session2) {
         state.email = session2.user.email || '';
         showApp();
-        load();
-        subscribe();
+        // Supabase держит auth-lock во время callback: запросы к таблицам
+        // нужно запускать после выхода из callback, иначе они зависают.
+        setTimeout(function () { load(); subscribe(); }, 0);
       }
       if (event === 'SIGNED_OUT') showLogin();
     });
