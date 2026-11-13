@@ -140,7 +140,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 .list-row .when{flex:0 0 96px;color:var(--muted2);font-size:11px}
 .list-row .grow{flex:1;min-width:0;word-break:break-word}
 .list-row .grow small{display:block;color:var(--muted);font-size:11px;margin-top:2px;word-break:break-word}
-.sub-url{font-size:11px;word-break:break-all;color:#c9c9d2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.sub-url{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9c9d2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .sub-devices{display:flex;flex-direction:column;gap:5px;margin-top:10px}
 .sub-device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11.5px}
 .sub-device .grow{flex:1;min-width:0}
@@ -796,6 +796,7 @@ function renderSettings() {
       '<div class="card-sub">Единые для всех пользователей и устройств</div>' +
     '</div>' + badge('глобально', 'blue') + '</div>' +
     '<div class="section" style="margin-top:16px"><div class="section-head"><i class="dot"></i>Identity устройства</div><div class="section-body">' +
+      '<div class="field"><label>Приложение</label><input class="input" id="setApp" placeholder="Happ" value="' + esc(settings.app || '') + '"></div>' +
       '<div class="field"><label>HWID для провайдера</label><input class="input mono" id="setDeviceHwid" placeholder="UUID или строка; пусто — реальный HWID" value="' + esc(device.hwid || '') + '"></div>' +
       '<div class="form-row">' +
         '<div class="field"><label>Модель</label><input class="input" id="setDeviceModel" placeholder="Xiaomi 23090RA98G" value="' + esc(device.model || '') + '"></div>' +
@@ -805,7 +806,7 @@ function renderSettings() {
         '<div class="field"><label>Версия системы</label><input class="input mono" id="setDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
         '<div class="field"><label>Версия ядра</label><input class="input mono" id="setDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
       '</div>' +
-      '<div class="hint">Эти значения получают все клиенты. HWID уходит провайдеру в заголовке x-hwid, остальные поля — в x-device-model, x-device-os, x-ver-os и x-ver-core. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
+      '<div class="hint">«Приложение» — имя, которое клиенты показывают в снимке и получают в настройках (например, Happ). HWID уходит провайдеру в заголовке x-hwid, остальные поля — в x-device-model, x-device-os, x-ver-os и x-ver-core. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
     '</div></div>' +
     '<div class="actions">' +
       '<button class="btn primary" type="button" data-settings-save>Сохранить</button>' +
@@ -820,6 +821,7 @@ $('view').addEventListener('click', async function (event) {
   button.textContent = 'Сохранение…';
   var result = await panel('admin_update_settings', {
     settings: {
+      app: $('setApp').value.trim(),
       device: {
         hwid: $('setDeviceHwid').value.trim(),
         model: $('setDeviceModel').value.trim(),
@@ -1236,7 +1238,7 @@ function subscriptionCard(item) {
       '<div><span>Синхронизация</span><b>' + esc(synced ? dateText(synced) : '—') + '</b></div>' +
       '<div><span>Добавлена</span><b>' + esc(dateText(item.createdAt)) + '</b></div>' +
       (selected ? '<div style="grid-column:1/-1"><span>Выбранный узел</span><b>' + esc(selected) + '</b></div>' : '') +
-      '<div style="grid-column:1/-1"><span>Ссылка подписки</span><b class="sub-url">' + esc(item.url || '—') + '</b></div>' +
+      '<div style="grid-column:1/-1"><span>Ссылка подписки</span><b class="sub-url" title="' + esc(item.url || '') + '">' + esc(item.url || '—') + '</b></div>' +
     '</div>' +
     (deviceHtml ? '<div class="sub-devices">' + deviceHtml + '</div>' : '<div class="hint">Устройства ещё не присылали снимок этой подписки.</div>') +
     '<div class="actions">' +
