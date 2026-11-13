@@ -146,6 +146,20 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 .sub-device .grow{flex:1;min-width:0}
 .sub-device small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
 .split-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.chart{display:block;width:100%;height:auto;overflow:visible}
+.chart-caption{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11.5px;font-weight:600;margin-bottom:5px}
+.chart-caption i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.chart-caption b{margin-left:auto;color:var(--text);font-weight:600}
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+.donut-block{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:14px 12px 12px;min-width:0}
+.donut{width:132px;height:132px;flex:0 0 auto}
+.donut svg{display:block;width:100%;height:100%}
+.donut-legend{width:100%;display:flex;flex-direction:column;gap:5px}
+.donut-item{display:flex;align-items:center;gap:7px;font-size:11.5px;min-width:0}
+.donut-item i{width:8px;height:8px;border-radius:3px;flex:0 0 auto}
+.donut-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.donut-item b{font-weight:600}
+.donut-item em{font-style:normal;color:var(--muted2);font-size:10.5px;min-width:30px;text-align:right}
 @media(max-width:900px){.home-grid{grid-template-columns:1fr}.split-2{grid-template-columns:1fr}}
 @media(max-width:720px){
   .wrap{padding:12px 12px 50px}
@@ -373,14 +387,24 @@ async function load() {
 async function panel(action, payload) {
   var session = await supabase.auth.getSession();
   var token = session.data.session ? session.data.session.access_token : '';
-  var response = await fetch(PANEL_FUNCTION, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify(Object.assign({ v: 2, action: action }, payload || {}))
-  });
-  var body = await response.json().catch(function () { return null; });
-  if (!body) throw new Error('Сервер вернул пустой ответ');
-  return body;
+  var controller = new AbortController();
+  var timer = setTimeout(function () { controller.abort(); }, 20000);
+  try {
+    var response = await fetch(PANEL_FUNCTION, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(Object.assign({ v: 2, action: action }, payload || {}))
+    });
+    var body = await response.json().catch(function () { return null; });
+    if (!body) throw new Error('Сервер вернул пустой ответ');
+    return body;
+  } catch (error) {
+    if (error && error.name === 'AbortError') throw new Error('Сервер не ответил за 20 секунд');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function subscribe() {
@@ -940,6 +964,181 @@ function userLabel(user) {
   return user.display_name ? user.username + ' · ' + user.display_name : user.username;
 }
 
+// ------------------------------------------------------------------ charts
+var CHART_COLORS = ['#ff5c61', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#38bdf8', '#facc15'];
+
+function dayBuckets(items, field, days) {
+  var result = [];
+  var index = {};
+  var start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start = start.getTime() - (days - 1) * 86400000;
+  for (var i = 0; i < days; i++) {
+    var date = new Date(start + i * 86400000);
+    var key = date.getFullYear() + '-' + date.getMonth() + '-' + date.getDate();
+    var bucket = { date: date, count: 0 };
+    index[key] = bucket;
+    result.push(bucket);
+  }
+  (items || []).forEach(function (item) {
+    var date = new Date(item[field]);
+    if (isNaN(date.getTime())) return;
+    var key = date.getFullYear() + '-' + date.getMonth() + '-' + date.getDate();
+    if (index[key]) index[key].count++;
+  });
+  return result;
+}
+
+function niceStep(peak) {
+  var raw = Math.max(1, peak) / 4;
+  var power = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+  var normalized = raw / power;
+  var step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return Math.max(1, step * power);
+}
+
+function chartAxis(buckets) {
+  var peak = buckets.reduce(function (max, bucket) { return Math.max(max, bucket.count); }, 0);
+  if (peak <= 4) return { step: 1, max: peak >= 4 ? 4 : Math.max(2, peak + 1) };
+  var step = niceStep(peak);
+  return { step: step, max: step * Math.ceil(peak / step) };
+}
+
+function axisValues(axis) {
+  var values = [];
+  for (var value = 0; value <= axis.max + 0.0001; value += axis.step) values.push(value);
+  return values;
+}
+
+function chartGrid(values, max, width, height, padding) {
+  var plotH = height - padding.top - padding.bottom;
+  var html = '';
+  values.forEach(function (value) {
+    var y = padding.top + plotH * (1 - value / max);
+    html += '<line x1="' + padding.left + '" y1="' + y + '" x2="' + (width - padding.right) + '" y2="' + y +
+      '" stroke="#2a2a33" stroke-width="1"' + (value ? ' stroke-dasharray="3 4"' : '') + '/>' +
+      '<text x="' + (padding.left - 7) + '" y="' + (y + 3.5) + '" fill="#6f6f7a" font-size="9.5" text-anchor="end">' + value + '</text>';
+  });
+  return html;
+}
+
+function chartDateLabels(buckets, x, height) {
+  var every = buckets.length > 10 ? 3 : 2;
+  return buckets.map(function (bucket, index) {
+    if (index % every !== 0 && index !== buckets.length - 1) return '';
+    var text = String(bucket.date.getDate()).padStart(2, '0') + '.' + String(bucket.date.getMonth() + 1).padStart(2, '0');
+    return '<text x="' + x(index) + '" y="' + (height - 7) + '" fill="#6f6f7a" font-size="9.5" text-anchor="middle">' + text + '</text>';
+  }).join('');
+}
+
+var chartSeq = 0;
+
+function lineChart(items, field, days, color, label) {
+  var buckets = dayBuckets(items, field, days);
+  var axis = chartAxis(buckets);
+  var width = 720, height = 220;
+  var padding = { top: 12, right: 10, bottom: 26, left: 34 };
+  var plotW = width - padding.left - padding.right;
+  var plotH = height - padding.top - padding.bottom;
+  function x(index) { return padding.left + (days === 1 ? plotW / 2 : plotW * index / (days - 1)); }
+  function y(value) { return padding.top + plotH * (1 - value / axis.max); }
+  var points = buckets.map(function (bucket, index) { return x(index) + ',' + y(bucket.count); });
+  var linePath = 'M' + points.join(' L');
+  var areaPath = linePath + ' L' + x(days - 1) + ',' + y(0) + ' L' + x(0) + ',' + y(0) + ' Z';
+  var gridValues = axisValues(axis);
+  var gradient = 'chart-grad-' + (++chartSeq);
+  var last = buckets[buckets.length - 1];
+  return '<svg class="chart" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(label) + '">' +
+    '<defs><linearGradient id="' + gradient + '" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="' + color + '" stop-opacity=".3"/>' +
+    '<stop offset="1" stop-color="' + color + '" stop-opacity="0"/>' +
+    '</linearGradient></defs>' +
+    chartGrid(gridValues, axis.max, width, height, padding) +
+    '<path d="' + areaPath + '" fill="url(#' + gradient + ')"/>' +
+    '<path d="' + linePath + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<circle cx="' + x(buckets.length - 1) + '" cy="' + y(last.count) + '" r="3.2" fill="' + color + '"/>' +
+    chartDateLabels(buckets, x, height) +
+    '</svg>';
+}
+
+function barChart(items, field, days, color, label) {
+  var buckets = dayBuckets(items, field, days);
+  var axis = chartAxis(buckets);
+  var width = 720, height = 220;
+  var padding = { top: 12, right: 10, bottom: 26, left: 34 };
+  var plotW = width - padding.left - padding.right;
+  var plotH = height - padding.top - padding.bottom;
+  function x(index) { return padding.left + plotW * (index + 0.5) / days; }
+  function y(value) { return padding.top + plotH * (1 - value / axis.max); }
+  var slot = plotW / days;
+  var barW = Math.max(5, slot * 0.52);
+  var gridValues = axisValues(axis);
+  var bars = buckets.map(function (bucket, index) {
+    var top = y(bucket.count);
+    var barHeight = Math.max(0, y(0) - top);
+    if (barHeight < 1) return '';
+    return '<rect x="' + (x(index) - barW / 2) + '" y="' + top + '" width="' + barW + '" height="' + barHeight +
+      '" rx="3" fill="' + color + '" opacity="' + (index === days - 1 ? '1' : '.72') + '">' +
+      '<title>' + esc(bucket.date.toLocaleDateString('ru-RU')) + ': ' + bucket.count + '</title></rect>';
+  }).join('');
+  return '<svg class="chart" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(label) + '">' +
+    chartGrid(gridValues, axis.max, width, height, padding) + bars + chartDateLabels(buckets, x, height) + '</svg>';
+}
+
+function donutChart(rows, centerValue, centerLabel) {
+  rows = rows.filter(function (row) { return Number(row.count) > 0; });
+  var total = rows.reduce(function (sum, row) { return sum + Number(row.count); }, 0);
+  var radius = 52, stroke = 15, circumference = 2 * Math.PI * radius;
+  var ring = '<circle cx="70" cy="70" r="' + radius + '" fill="none" stroke="#22222b" stroke-width="' + stroke + '"/>';
+  var offset = 0;
+  var segments = rows.map(function (row) {
+    var shown = row.display != null ? String(row.display) : Number(row.count).toLocaleString('ru-RU');
+    var length = total ? Number(row.count) / total * circumference : 0;
+    if (length <= 0) return '';
+    var draw = Math.max(0.8, length - (length > 5 ? 1.6 : 0));
+    var segment = '<circle cx="70" cy="70" r="' + radius + '" fill="none" stroke="' + row.color +
+      '" stroke-width="' + stroke + '" stroke-dasharray="' + draw + ' ' + (circumference - draw) +
+      '" stroke-dashoffset="' + (-offset) + '" transform="rotate(-90 70 70)">' +
+      '<title>' + esc(row.key) + ': ' + esc(shown) + '</title></circle>';
+    offset += length;
+    return segment;
+  }).join('');
+  var valueSize = String(centerValue).length > 9 ? 14 : String(centerValue).length > 6 ? 17 : 21;
+  var legend = rows.map(function (row) {
+    var shown = row.display != null ? String(row.display) : Number(row.count).toLocaleString('ru-RU');
+    var percent = total ? Math.round(Number(row.count) / total * 100) : 0;
+    return '<div class="donut-item"><i style="background:' + row.color + '"></i><span title="' + esc(row.key) + '">' + esc(row.key) +
+      '</span><b>' + esc(shown) + '</b><em>' + percent + '%</em></div>';
+  }).join('');
+  return '<div class="donut-block"><div class="donut"><svg viewBox="0 0 140 140" role="img" aria-label="' + esc(centerLabel) + '">' +
+    ring + segments +
+    '<text x="70" y="67" fill="#f5f5f7" font-size="' + valueSize + '" font-weight="700" text-anchor="middle">' + esc(centerValue) + '</text>' +
+    '<text x="70" y="83" fill="#6f6f7a" font-size="8.5" letter-spacing=".08em" text-anchor="middle">' + esc(centerLabel) + '</text>' +
+    '</svg></div><div class="donut-legend">' + (legend || '<div class="hint" style="margin:0">Нет данных.</div>') + '</div></div>';
+}
+
+function userStatusRows(users, now) {
+  var blocked = 0, expired = 0, expiring = 0;
+  users.forEach(function (user) {
+    if (user.status === 'blocked') { blocked++; return; }
+    var time = expiresAt(user);
+    if (time && time < now) { expired++; return; }
+    if (time && time - now <= 7 * 86400000) { expiring++; return; }
+  });
+  return [
+    { key: 'Активные', count: users.length - blocked - expired - expiring, color: CHART_COLORS[2] },
+    { key: 'Истекают за 7 дней', count: expiring, color: CHART_COLORS[3] },
+    { key: 'Истекли', count: expired, color: CHART_COLORS[0] },
+    { key: 'Заблокированы', count: blocked, color: '#8b8b96' }
+  ];
+}
+
+function platformRows(devices) {
+  return countBy(devices, function (device) { return device.os || device.platform || 'неизвестно'; })
+    .slice(0, 6)
+    .map(function (row, index) { return { key: row.key, count: row.count, color: CHART_COLORS[index % CHART_COLORS.length] }; });
+}
+
 function renderHome() {
   var now = Date.now();
   var devices = state.devices.filter(function (d) { return !d.archived; });
@@ -1004,6 +1203,9 @@ function renderHome() {
     return listRow(ago(device.last_seen), device.name || device.model || device.hwid,
       [owner ? owner.username : 'без аккаунта', device.app_version, device.node_name || device.server].filter(Boolean).join(' · '));
   }).join('');
+  var newDevicesBuckets = dayBuckets(devices, 'first_seen', 14);
+  var newDevicesTotal = newDevicesBuckets.reduce(function (sum, bucket) { return sum + bucket.count; }, 0);
+  var eventsTotal = dayBuckets(state.events, 'created_at', 14).reduce(function (sum, bucket) { return sum + bucket.count; }, 0);
 
   return '<div class="home-grid">' +
     homePanel('Сводка', metrics([
@@ -1015,6 +1217,24 @@ function renderHome() {
       { value: num(newFeedback), label: 'новых обращений', hint: state.feedback.length + ' всего' },
       { value: num(eventsDay), label: 'событий за сутки', hint: state.events.length + ' всего' }
     ]), { wide: true, extra: '<span class="muted" style="font-weight:400;font-size:11px">обновлено ' + esc(state.loadedAt ? dateText(state.loadedAt) : '—') + '</span>' }) +
+    homePanel('Динамика за 14 дней', '<div class="split-2">' +
+      '<div><div class="chart-caption"><i style="background:#ff5c61"></i>События<b>' + num(eventsTotal) + '</b></div>' +
+      lineChart(state.events, 'created_at', 14, '#ff5c61', 'События за 14 дней') + '</div>' +
+      '<div><div class="chart-caption"><i style="background:#60a5fa"></i>Новые устройства<b>' + num(newDevicesTotal) + '</b></div>' +
+      barChart(devices, 'first_seen', 14, '#60a5fa', 'Новые устройства за 14 дней') + '</div>' +
+      '</div>', { wide: true }) +
+    homePanel('Структура', '<div class="charts-grid">' +
+      donutChart(userStatusRows(users, now), num(users.length), 'ПОЛЬЗОВАТЕЛИ') +
+      donutChart(platformRows(devices), num(devices.length), 'УСТРОЙСТВА') +
+      donutChart([
+        { key: 'Скачано', count: traffic.totalDown, display: bytes(traffic.totalDown), color: CHART_COLORS[1] },
+        { key: 'Отправлено', count: traffic.totalUp, display: bytes(traffic.totalUp), color: CHART_COLORS[4] }
+      ], bytes(totalTraffic), 'ТРАФИК') +
+      donutChart([
+        { key: 'Успешные', count: healthy, color: CHART_COLORS[2] },
+        { key: 'С ошибкой', count: failing, color: CHART_COLORS[0] }
+      ], num(reports), 'ПРОВЕРОК') +
+      '</div>', { wide: true }) +
     homePanel('Пользователи', metrics([
       { value: num(users.filter(function (u) { return u.status !== 'blocked' && !(expiresAt(u) && expiresAt(u) < now); }).length), label: 'активных', cls: 'green' },
       { value: num(blocked.length), label: 'заблокировано', cls: blocked.length ? 'red' : '' },
