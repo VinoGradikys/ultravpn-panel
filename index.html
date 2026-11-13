@@ -629,6 +629,7 @@ function renderAppView(device) {
     html += '<div class="section-head" style="margin-top:16px"><i class="dot"></i>Провайдер видит' +
       '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:10.5px">из настроек</span></div>' +
       '<div class="identity" style="margin-top:8px">' +
+        cell('app', provider.app || (state.settings && state.settings.app) || view.app || '—') +
         cell('hwid', provider.hwid || view.hwid || '—') +
         cell('model', provider.model || '—') +
         cell('os', provider.os || '—') +
