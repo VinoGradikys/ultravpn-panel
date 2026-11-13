@@ -704,7 +704,7 @@ function openSubscriptionModal(user) {
         '<div class="field"><label>Версия системы</label><input class="input mono" id="subDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
         '<div class="field"><label>Версия ядра</label><input class="input mono" id="subDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
       '</div>' +
-      '<div class="hint">Клиент подставит эти значения в заголовки x-device-* / x-ver-* при запросе подписки. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
+      '<div class="hint">Значения применяются ко всем устройствам пользователя и уходят провайдеру в заголовках x-device-* / x-ver-* при запросе подписки. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
     '</div></div>' +
     '<div class="form-row" style="margin-top:4px">' +
       '<div class="field"><label>Выбор сервера</label><select id="subAuto"><option value="true"' + (sub.autoSelect !== false ? ' selected' : '') + '>Автоматически</option><option value="false"' + (sub.autoSelect === false ? ' selected' : '') + '>Вручную</option></select></div>' +
