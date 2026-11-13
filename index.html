@@ -148,6 +148,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
   <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="devices" type="button">Устройства</button>
     <button class="tab" data-tab="users" type="button">Пользователи</button>
+    <button class="tab" data-tab="settings" type="button">Настройки</button>
     <button class="tab" data-tab="feedback" type="button">Обращения</button>
     <button class="tab" data-tab="events" type="button">События</button>
   </nav>
@@ -187,6 +188,7 @@ var state = {
   feedback: [],
   events: [],
   commands: [],
+  settings: {},
   loading: false,
   realtime: null
 };
@@ -302,7 +304,8 @@ async function load() {
       supabase.from('feedback').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('events').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('commands').select('*').order('created_at', { ascending: false }).limit(300),
-      panel('admin_list_users', {})
+      panel('admin_list_users', {}),
+      panel('admin_get_settings', {})
     ]);
     if (results[0].error) throw results[0].error;
     if (results[1].error) throw results[1].error;
@@ -313,6 +316,7 @@ async function load() {
     state.events = results[2].data || [];
     state.commands = results[3].data || [];
     state.users = (results[4] && results[4].ok && results[4].data.users) ? results[4].data.users : [];
+    state.settings = (results[5] && results[5].ok && results[5].data.settings) ? results[5].data.settings : {};
     render();
   } catch (error) {
     toast('Ошибка загрузки: ' + (error.message || error));
@@ -371,9 +375,11 @@ function render() {
   $('statUsers').textContent = state.users.length;
   $('statFeedback').textContent = state.feedback.filter(function (f) { return f.status === 'new'; }).length;
   $('createUserBtn').classList.toggle('hidden', state.tab !== 'users');
+  $('search').classList.toggle('hidden', state.tab === 'settings');
 
   if (state.tab === 'devices') $('view').innerHTML = renderDevices();
   else if (state.tab === 'users') $('view').innerHTML = renderUsers();
+  else if (state.tab === 'settings') $('view').innerHTML = renderSettings();
   else if (state.tab === 'feedback') $('view').innerHTML = renderFeedback();
   else $('view').innerHTML = renderEvents();
 }
@@ -683,7 +689,6 @@ function openSubscriptionModal(user) {
   var sub = user.subscription && typeof user.subscription === 'object' ? user.subscription : {};
   var providers = Array.isArray(sub.providers) ? sub.providers : [];
   var settings = user.settings && typeof user.settings === 'object' ? user.settings : {};
-  var device = settings.device && typeof settings.device === 'object' ? settings.device : {};
   var otherSettings = {};
   Object.keys(settings).forEach(function (key) {
     if (key !== 'device') otherSettings[key] = settings[key];
@@ -695,23 +700,12 @@ function openSubscriptionModal(user) {
       '<button class="btn small" id="addProvider" type="button">+ Провайдер</button>' +
       '<div class="hint">Ссылки видны только администратору и клиенту при синхронизации. В интерфейсе пользователя их нет.</div>' +
     '</div></div>' +
-    '<div class="section" style="margin-top:4px"><div class="section-head"><i class="dot"></i>Данные для провайдера</div><div class="section-body">' +
-      '<div class="form-row">' +
-        '<div class="field"><label>Модель</label><input class="input" id="subDeviceModel" placeholder="Xiaomi 23090RA98G" value="' + esc(device.model || '') + '"></div>' +
-        '<div class="field"><label>Система</label><input class="input" id="subDeviceOs" placeholder="Android" value="' + esc(device.os || '') + '"></div>' +
-      '</div>' +
-      '<div class="form-row">' +
-        '<div class="field"><label>Версия системы</label><input class="input mono" id="subDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
-        '<div class="field"><label>Версия ядра</label><input class="input mono" id="subDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
-      '</div>' +
-      '<div class="hint">Значения применяются ко всем устройствам пользователя и уходят провайдеру в заголовках x-device-* / x-ver-* при запросе подписки. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
-    '</div></div>' +
     '<div class="form-row" style="margin-top:4px">' +
       '<div class="field"><label>Выбор сервера</label><select id="subAuto"><option value="true"' + (sub.autoSelect !== false ? ' selected' : '') + '>Автоматически</option><option value="false"' + (sub.autoSelect === false ? ' selected' : '') + '>Вручную</option></select></div>' +
       '<div class="field"><label>Маршрутизация</label><select id="subRouting"><option value="global"' + (sub.routing !== 'split' ? ' selected' : '') + '>Весь трафик</option><option value="split"' + (sub.routing === 'split' ? ' selected' : '') + '>Выборочно</option></select></div>' +
     '</div>' +
     '<div class="field"><label>Другие настройки (JSON)</label><textarea id="subSettings" class="mono">' + esc(JSON.stringify(otherSettings, null, 2)) + '</textarea>' +
-    '<div class="hint">Сюда можно передать splitApps, excludeApps и другие параметры клиента. Данные провайдера задаются полями выше.</div></div>',
+    '<div class="hint">Сюда можно передать splitApps, excludeApps и другие параметры клиента. Данные для провайдера задаются в разделе «Настройки».</div></div>',
     async function () {
       var list = [];
       Array.prototype.forEach.call(document.querySelectorAll('#providers .provider'), function (row) {
@@ -723,12 +717,7 @@ function openSubscriptionModal(user) {
       var parsedSettings;
       try { parsedSettings = JSON.parse($('subSettings').value || '{}'); }
       catch (error) { toast('Настройки: неверный JSON'); return false; }
-      parsedSettings.device = {
-        model: $('subDeviceModel').value.trim(),
-        os: $('subDeviceOs').value.trim(),
-        osVersion: $('subDeviceOsVersion').value.trim(),
-        core: $('subDeviceCore').value.trim()
-      };
+      delete parsedSettings.device;
       var subscription = {
         providers: list,
         autoSelect: $('subAuto').value === 'true',
@@ -759,6 +748,55 @@ function providerRow(provider) {
     '<button class="btn small ghost" type="button" data-premove>×</button>' +
   '</div>';
 }
+
+// ------------------------------------------------------------------ settings
+function renderSettings() {
+  var settings = state.settings && typeof state.settings === 'object' ? state.settings : {};
+  var device = settings.device && typeof settings.device === 'object' ? settings.device : {};
+  return '<div class="card" style="max-width:760px">' +
+    '<div class="card-head"><div style="min-width:0;flex:1">' +
+      '<div class="card-title">Данные для провайдера</div>' +
+      '<div class="card-sub">Единые для всех пользователей и устройств</div>' +
+    '</div>' + badge('глобально', 'blue') + '</div>' +
+    '<div class="section" style="margin-top:16px"><div class="section-head"><i class="dot"></i>Identity устройства</div><div class="section-body">' +
+      '<div class="form-row">' +
+        '<div class="field"><label>Модель</label><input class="input" id="setDeviceModel" placeholder="Xiaomi 23090RA98G" value="' + esc(device.model || '') + '"></div>' +
+        '<div class="field"><label>Система</label><input class="input" id="setDeviceOs" placeholder="Android" value="' + esc(device.os || '') + '"></div>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="field"><label>Версия системы</label><input class="input mono" id="setDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
+        '<div class="field"><label>Версия ядра</label><input class="input mono" id="setDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
+      '</div>' +
+      '<div class="hint">Эти значения получают все клиенты и отправляют провайдеру в заголовках x-device-model, x-device-os, x-ver-os и x-ver-core. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
+    '</div></div>' +
+    '<div class="actions">' +
+      '<button class="btn primary" type="button" data-settings-save>Сохранить</button>' +
+    '</div>' +
+  '</div>';
+}
+
+$('view').addEventListener('click', async function (event) {
+  var button = event.target.closest('[data-settings-save]');
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = 'Сохранение…';
+  var result = await panel('admin_update_settings', {
+    settings: {
+      device: {
+        model: $('setDeviceModel').value.trim(),
+        os: $('setDeviceOs').value.trim(),
+        osVersion: $('setDeviceOsVersion').value.trim(),
+        core: $('setDeviceCore').value.trim()
+      }
+    }
+  });
+  button.disabled = false;
+  button.textContent = 'Сохранить';
+  if (!result.ok) { toast(result.message || 'Ошибка'); return; }
+  state.settings = result.data.settings;
+  toast('Глобальные настройки сохранены');
+  render();
+});
 
 // ------------------------------------------------------------------ feedback
 function renderFeedback() {
