@@ -503,6 +503,28 @@ function deviceEdition(device) {
   return core.indexOf('lite') >= 0 ? 'lite' : 'full';
 }
 
+// Имя установленного клиента. В снимке app теперь общий (v2rayN), поэтому
+// редакцию определяем по версии: lite-сборка присылает суффикс -lite.
+function clientName(device) {
+  return deviceEdition(device) === 'lite' ? 'UltraVPN Lite' : 'UltraVPN';
+}
+
+function clientVersion(device) {
+  return String(device && device.app_version || '').replace(/-lite\s*$/i, '').trim();
+}
+
+function clientLabel(device) {
+  return [clientName(device), clientVersion(device)].filter(Boolean).join(' · ');
+}
+
+function clientSummary(device) {
+  return [
+    clientName(device),
+    device && (device.os || device.platform),
+    clientVersion(device)
+  ].filter(Boolean).join(' · ');
+}
+
 function deviceGroupKey(device) {
   if (!device) return '';
   if (!device.account_id) return 'hwid:' + (device.hwid || '');
@@ -576,8 +598,8 @@ function deviceCard(device) {
     '</div>' +
     '<div class="kv">' +
       '<div><span>Пользователь</span><b>' + esc(ownerName) + '</b></div>' +
+      '<div><span>Клиент</span><b>' + esc(clientLabel(device)) + '</b></div>' +
       '<div><span>Платформа</span><b>' + esc([device.os, device.os_version].filter(Boolean).join(' ') || '—') + '</b></div>' +
-      '<div><span>Приложение</span><b>' + esc(device.app_version || '—') + '</b></div>' +
       '<div><span>Ядро</span><b>' + esc(device.core_version || '—') + '</b></div>' +
       '<div><span>VPN</span><b>' + esc(device.vpn_state || 'off') + (device.auto_selected ? ' · авто' : ' · вручную') + '</b></div>' +
       '<div><span>Сервер</span><b>' + esc(device.node_name || device.server || '—') + '</b></div>' +
@@ -767,7 +789,7 @@ function userCard(user) {
       userDeviceGroups.map(function (group) {
         var device = group.latest;
         return '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b style="font-size:12.5px">' + esc(device.name || device.hwid) + '</b>' +
-          ' <span class="muted" style="font-size:11.5px">' + esc([device.os, device.app_version].filter(Boolean).join(' · ')) + ' · ' + esc(ago(device.last_seen)) + '</span></div>';
+          ' <span class="muted" style="font-size:11.5px">' + esc(clientSummary(device)) + ' · ' + esc(ago(device.last_seen)) + '</span></div>';
       }).join('') + '</div></div>' : '') +
     '<div class="actions">' +
       '<button class="btn small" data-uact="edit-user">Изменить</button>' +
