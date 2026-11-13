@@ -1121,7 +1121,8 @@ function renderSubscriptions() {
   ]);
 
   var body = '<div class="panel" style="margin-bottom:14px"><div class="panel-head"><i class="dot"></i>Сводка по подпискам' +
-    '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">ссылки видны только администратору</span></div>' + summary + '</div>';
+    '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">ссылки видны только администратору</span>' +
+    '<button class="btn primary small" data-sub-add type="button">+ Подписка</button></div>' + summary + '</div>';
 
   body += list.length
     ? '<div class="grid">' + list.map(subscriptionCard).join('') + '</div>'
@@ -1130,6 +1131,49 @@ function renderSubscriptions() {
   body += renderDeviceSubscriptions();
   return body;
 }
+
+function openAddSubscriptionModal() {
+  if (!state.users.length) { toast('Сначала создайте пользователя'); return; }
+  var options = state.users.map(function (user) {
+    return '<option value="' + esc(user.id) + '">' + esc(user.username + (user.display_name ? ' · ' + user.display_name : '')) + '</option>';
+  }).join('');
+  openModal('Новая подписка', '' +
+    '<div class="field"><label>Пользователь</label><select id="subUser">' + options + '</select></div>' +
+    '<div class="field"><label>Название</label><input class="input" id="subName" placeholder="Например, Основная"></div>' +
+    '<div class="field"><label>Ссылка подписки</label><input class="input" id="subUrl" placeholder="https://…" autocomplete="off"></div>' +
+    '<label class="check"><input type="checkbox" id="subEnabled" checked> Включена</label>' +
+    '<div class="hint">Ссылка сохраняется у пользователя и передаётся клиенту при синхронизации. В интерфейсе пользователя её нет. Добавить ещё одну подписку можно повторно этой же кнопкой.</div>',
+    async function () {
+      var userId = $('subUser').value;
+      var name = $('subName').value.trim();
+      var url = $('subUrl').value.trim();
+      if (!url) { toast('Укажите ссылку подписки'); return false; }
+      var user = state.users.find(function (item) { return item.id === userId; });
+      if (!user) { toast('Пользователь не найден'); return false; }
+      var current = user.subscription && typeof user.subscription === 'object' ? user.subscription : {};
+      var providers = Array.isArray(current.providers) ? current.providers.slice() : [];
+      providers.push({ name: name || ('Подписка ' + (providers.length + 1)), url: url, enabled: $('subEnabled').checked });
+      var result = await panel('admin_update_user', {
+        userId: userId,
+        patch: {
+          subscription: {
+            providers: providers,
+            autoSelect: current.autoSelect !== false,
+            routing: current.routing || 'global',
+            updatedAt: Date.now()
+          }
+        }
+      });
+      if (!result.ok) { toast(result.message || 'Ошибка'); return false; }
+      toast('Подписка добавлена');
+      load();
+      return true;
+    });
+}
+
+$('view').addEventListener('click', function (event) {
+  if (event.target.closest('[data-sub-add]')) openAddSubscriptionModal();
+});
 
 function subscriptionCard(row) {
   var user = row.user;
