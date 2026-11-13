@@ -489,17 +489,28 @@ function filtered(list, mapper) {
 }
 
 // ------------------------------------------------------------------ devices
-// Одна и та же модель может появляться несколько раз после переустановки
-// или перехода между Full и Lite: у каждой установки свой HWID. Для админки
-// это одно физическое устройство, поэтому склеиваем записи по аккаунту,
-// платформе и модели, а старые версии показываем в раскрывающемся списке.
+// Переустановка одной и той же версии (Full→Full, Lite→Lite) меняет HWID,
+// но для админки это одно устройство: склеиваем по аккаунту, платформе,
+// модели и редакции. Full и Lite — разные приложения, их можно держать
+// установленными одновременно, поэтому это два отдельных устройства.
+function deviceEdition(device) {
+  if (!device) return 'full';
+  var version = String(device.app_version || '').toLowerCase();
+  if (version.indexOf('lite') >= 0) return 'lite';
+  var view = device.config_view && typeof device.config_view === 'object' ? device.config_view : null;
+  var identity = view && view.identity && typeof view.identity === 'object' ? view.identity : null;
+  var core = identity ? String(identity.core || '').toLowerCase() : '';
+  return core.indexOf('lite') >= 0 ? 'lite' : 'full';
+}
+
 function deviceGroupKey(device) {
   if (!device) return '';
   if (!device.account_id) return 'hwid:' + (device.hwid || '');
   return [
     device.account_id,
     String(device.platform || device.os || '').toLowerCase(),
-    String(device.model || device.name || '').trim().toLowerCase()
+    String(device.model || device.name || '').trim().toLowerCase(),
+    deviceEdition(device)
   ].join('|');
 }
 
