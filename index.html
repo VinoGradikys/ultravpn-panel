@@ -1097,7 +1097,7 @@ function providerFailed(provider) {
 }
 function providerCabinetUrl(provider) {
   var item = catalogSubscription(provider && provider.id);
-  var url = String((item && item.url) || (provider && provider.url) || '').trim();
+  var url = String((item && item.resolvedUrl) || (item && item.url) || (provider && provider.url) || '').trim();
   return /^https?:\/\//i.test(url) ? url : '';
 }
 function providerCabinetLink(provider) {
@@ -1694,7 +1694,9 @@ function subscriptionCard(item) {
   var catalogNodes = Number(item.nodesTotal) || previewNodes.length;
   var nodes = catalogNodes || liveNodes;
   var expired = subscriptionExpired(item);
-  var cabinetUrl = /^https?:\/\//i.test(String(item.url || '')) ? String(item.url).trim() : '';
+  var cabinetUrl = /^https?:\/\//i.test(String(item.resolvedUrl || ''))
+    ? String(item.resolvedUrl).trim()
+    : (/^https?:\/\//i.test(String(item.url || '')) ? String(item.url).trim() : '');
   var synced = '';
   var selected = '';
   snapshots.forEach(function (snap) {
@@ -1748,8 +1750,8 @@ function subscriptionCard(item) {
       '<div><span>Синхронизация</span><b>' + esc(synced ? dateText(synced) : '—') + '</b></div>' +
       '<div><span>Добавлена</span><b>' + esc(dateText(item.createdAt)) + '</b></div>' +
       (selected ? '<div style="grid-column:1/-1"><span>Выбранный узел</span><b>' + esc(selected) + '</b></div>' : '') +
-      '<div style="grid-column:1/-1"><span>Ссылка провайдера</span><b class="sub-url" title="' + esc(item.url || '') + '">' +
-        (cabinetUrl ? '<a href="' + esc(cabinetUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(item.url) + '</a>' : '—') + '</b></div>' +
+      '<div style="grid-column:1/-1"><span>Ссылка провайдера</span><b class="sub-url" title="' + esc(cabinetUrl || item.url || '') + '">' +
+        (cabinetUrl ? '<a href="' + esc(cabinetUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(cabinetUrl) + '</a>' : '—') + '</b></div>' +
     '</div>' +
     (expired
       ? '<div class="hint" style="color:#fbbf24;margin-top:8px">Подписка истекла — серверы больше не передаются клиентам.</div>'
