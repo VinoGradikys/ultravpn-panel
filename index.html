@@ -956,7 +956,7 @@ function renderSettings() {
       '<div class="card-sub">Единые для всех пользователей и устройств</div>' +
     '</div>' + badge('глобально', 'blue') + '</div>' +
     '<div class="section" style="margin-top:16px"><div class="section-head"><i class="dot"></i>Identity устройства</div><div class="section-body">' +
-      '<div class="field"><label>Приложение</label><input class="input" id="setApp" placeholder="Happ" value="' + esc(settings.app || '') + '"></div>' +
+      '<div class="field"><label>Приложение</label><input class="input" id="setApp" placeholder="UltraVPN" value="' + esc(settings.app || '') + '"></div>' +
       '<div class="field"><label>HWID для провайдера</label><input class="input mono" id="setDeviceHwid" placeholder="UUID или строка; пусто — реальный HWID" value="' + esc(device.hwid || '') + '"></div>' +
       '<div class="form-row">' +
         '<div class="field"><label>Модель</label><input class="input" id="setDeviceModel" placeholder="Xiaomi 23090RA98G" value="' + esc(device.model || '') + '"></div>' +
@@ -966,7 +966,7 @@ function renderSettings() {
         '<div class="field"><label>Версия системы</label><input class="input mono" id="setDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
         '<div class="field"><label>Версия ядра</label><input class="input mono" id="setDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
       '</div>' +
-      '<div class="hint">«Приложение» — имя, которое клиенты показывают в снимке и получают в настройках (например, Happ). HWID уходит провайдеру в заголовке x-hwid, остальные поля — в x-device-model, x-device-os, x-ver-os и x-ver-core. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
+      '<div class="hint">«Приложение» — справочное имя клиента в настройках. В карточке устройства показывается реальное значение из снимка клиента, без подмены. HWID уходит провайдеру в заголовке x-hwid, остальные поля — в x-device-model, x-device-os, x-ver-os и x-ver-core.</div>' +
     '</div></div>' +
     '<div class="actions">' +
       '<button class="btn primary" type="button" data-settings-save>Сохранить</button>' +
