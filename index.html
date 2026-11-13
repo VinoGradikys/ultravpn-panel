@@ -683,6 +683,11 @@ function openSubscriptionModal(user) {
   var sub = user.subscription && typeof user.subscription === 'object' ? user.subscription : {};
   var providers = Array.isArray(sub.providers) ? sub.providers : [];
   var settings = user.settings && typeof user.settings === 'object' ? user.settings : {};
+  var device = settings.device && typeof settings.device === 'object' ? settings.device : {};
+  var otherSettings = {};
+  Object.keys(settings).forEach(function (key) {
+    if (key !== 'device') otherSettings[key] = settings[key];
+  });
   var rows = providers.map(providerRow).join('');
   openModal('Подписка и настройки · ' + user.username, '' +
     '<div class="section" style="margin-top:0"><div class="section-head"><i class="dot"></i>Провайдеры</div><div class="section-body">' +
@@ -690,12 +695,23 @@ function openSubscriptionModal(user) {
       '<button class="btn small" id="addProvider" type="button">+ Провайдер</button>' +
       '<div class="hint">Ссылки видны только администратору и клиенту при синхронизации. В интерфейсе пользователя их нет.</div>' +
     '</div></div>' +
+    '<div class="section" style="margin-top:4px"><div class="section-head"><i class="dot"></i>Данные для провайдера</div><div class="section-body">' +
+      '<div class="form-row">' +
+        '<div class="field"><label>Модель</label><input class="input" id="subDeviceModel" placeholder="Xiaomi 23090RA98G" value="' + esc(device.model || '') + '"></div>' +
+        '<div class="field"><label>Система</label><input class="input" id="subDeviceOs" placeholder="Android" value="' + esc(device.os || '') + '"></div>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="field"><label>Версия системы</label><input class="input mono" id="subDeviceOsVersion" placeholder="16" value="' + esc(device.osVersion || '') + '"></div>' +
+        '<div class="field"><label>Версия ядра</label><input class="input mono" id="subDeviceCore" placeholder="2.0.0" value="' + esc(device.core || '') + '"></div>' +
+      '</div>' +
+      '<div class="hint">Клиент подставит эти значения в заголовки x-device-* / x-ver-* при запросе подписки. В панели при этом видно настоящее устройство. Пустое поле — реальное значение клиента.</div>' +
+    '</div></div>' +
     '<div class="form-row" style="margin-top:4px">' +
       '<div class="field"><label>Выбор сервера</label><select id="subAuto"><option value="true"' + (sub.autoSelect !== false ? ' selected' : '') + '>Автоматически</option><option value="false"' + (sub.autoSelect === false ? ' selected' : '') + '>Вручную</option></select></div>' +
       '<div class="field"><label>Маршрутизация</label><select id="subRouting"><option value="global"' + (sub.routing !== 'split' ? ' selected' : '') + '>Весь трафик</option><option value="split"' + (sub.routing === 'split' ? ' selected' : '') + '>Выборочно</option></select></div>' +
     '</div>' +
-    '<div class="field"><label>Настройки (JSON)</label><textarea id="subSettings" class="mono">' + esc(JSON.stringify(settings, null, 2)) + '</textarea>' +
-    '<div class="hint">Сюда можно передать splitApps, excludeApps и другие параметры клиента.</div></div>',
+    '<div class="field"><label>Другие настройки (JSON)</label><textarea id="subSettings" class="mono">' + esc(JSON.stringify(otherSettings, null, 2)) + '</textarea>' +
+    '<div class="hint">Сюда можно передать splitApps, excludeApps и другие параметры клиента. Данные провайдера задаются полями выше.</div></div>',
     async function () {
       var list = [];
       Array.prototype.forEach.call(document.querySelectorAll('#providers .provider'), function (row) {
@@ -707,6 +723,12 @@ function openSubscriptionModal(user) {
       var parsedSettings;
       try { parsedSettings = JSON.parse($('subSettings').value || '{}'); }
       catch (error) { toast('Настройки: неверный JSON'); return false; }
+      parsedSettings.device = {
+        model: $('subDeviceModel').value.trim(),
+        os: $('subDeviceOs').value.trim(),
+        osVersion: $('subDeviceOsVersion').value.trim(),
+        core: $('subDeviceCore').value.trim()
+      };
       var subscription = {
         providers: list,
         autoSelect: $('subAuto').value === 'true',
