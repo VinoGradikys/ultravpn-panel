@@ -141,6 +141,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 .list-row .grow{flex:1;min-width:0;word-break:break-word}
 .list-row .grow small{display:block;color:var(--muted);font-size:11px;margin-top:2px;word-break:break-word}
 .sub-url{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9c9d2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.sub-url a{color:#8ab4ff;text-decoration:none}
+.sub-url a:hover{text-decoration:underline}
+.provider-link{color:#8ab4ff;font-size:11px;text-decoration:none;white-space:nowrap}
+.provider-link:hover{text-decoration:underline}
+a.btn{color:var(--text);text-decoration:none}
 .sub-devices{display:flex;flex-direction:column;gap:5px;margin-top:10px}
 .sub-device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11.5px}
 .sub-device .grow{flex:1;min-width:0}
@@ -534,12 +539,11 @@ function renderDevices() {
     return '<div class="empty"><b>Устройств нет</b>Клиент появится здесь после первого входа и heartbeat.</div>';
   }
   return '<div class="grid">' + groups.map(function (group) {
-    return deviceCard(group.latest, group.items.filter(function (device) { return device !== group.latest; }));
+    return deviceCard(group.latest);
   }).join('') + '</div>';
 }
 
-function deviceCard(device, versions) {
-  versions = versions || [];
+function deviceCard(device) {
   var up = online(device);
   var owner = deviceOwner(device);
   var ownerName = owner ? owner.username : (device.account_id ? 'аккаунт удалён' : 'без аккаунта');
@@ -549,8 +553,7 @@ function deviceCard(device, versions) {
       '<div style="min-width:0;flex:1"><div class="card-title">' + esc(device.name || device.model || device.hwid) + '</div>' +
       '<div class="card-sub">' + esc(device.hwid) + '</div></div>' +
       '<div style="text-align:right">' + (up ? badge('онлайн', 'green') : badge('офлайн', '')) +
-      (device.blocked ? ' ' + badge('блок', 'red') : '') +
-      (versions.length ? ' ' + badge('ещё ' + versions.length + ' ' + (versions.length === 1 ? 'версия' : (versions.length < 5 ? 'версии' : 'версий')), 'blue') : '') + '</div>' +
+      (device.blocked ? ' ' + badge('блок', 'red') : '') + '</div>' +
     '</div>' +
     '<div class="kv">' +
       '<div><span>Пользователь</span><b>' + esc(ownerName) + '</b></div>' +
@@ -567,19 +570,6 @@ function deviceCard(device, versions) {
       '<div><span>Ошибка</span><b style="color:' + (device.last_error ? '#ffb4b6' : 'inherit') + '">' + esc(device.last_error || '—') + '</b></div>' +
     '</div>' +
     renderAppView(device) +
-    (versions.length
-      ? '<details class="device-versions"><summary>Другие версии этого устройства (' + versions.length + ')</summary>' +
-        '<div class="sub-devices">' + versions.map(function (old) {
-          return '<div class="sub-device" data-hwid="' + esc(old.hwid) + '">' +
-            '<div class="grow"><b>' + esc(old.app_version || 'версия не указана') + '</b>' +
-            '<small>' + esc([old.os, old.core_version, 'HWID ' + String(old.hwid || '').slice(0, 8) + '…', ago(old.last_seen)].filter(Boolean).join(' · ')) + '</small></div>' +
-            (old.archived ? badge('в архиве', '') : '') +
-            '<button class="btn small ghost" data-act="archive" type="button">' + (old.archived ? 'Вернуть' : 'В архив') + '</button>' +
-            '</div>';
-        }).join('') + '</div>' +
-        '<div class="hint">Записи одной модели с разными HWID: переустановка или Full/Lite-версии. Карточка показывает самую свежую запись.</div>' +
-        '</details>'
-      : '') +
     '<div class="actions">' +
       '<button class="btn small" data-act="vpn_on">VPN вкл</button>' +
       '<button class="btn small" data-act="vpn_off">VPN выкл</button>' +
@@ -641,7 +631,7 @@ function renderAppView(device) {
         var isExpired = providerExpired(provider);
         return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', isExpired ? '' : (provider.ok === false ? 'red' : 'green')) +
           '<span class="muted" style="font-size:11.5px">' + esc(isExpired ? 'подписка истекла' : (provider.nodes != null ? provider.nodes + ' узлов' : '')) +
-          (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
+          (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span>' + providerCabinetLink(provider) + '</div>';
       }).join('') + '</div>';
     }
     if (Array.isArray(subscription.errors) && subscription.errors.length) {
@@ -757,8 +747,7 @@ function userCard(user) {
       userDeviceGroups.map(function (group) {
         var device = group.latest;
         return '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b style="font-size:12.5px">' + esc(device.name || device.hwid) + '</b>' +
-          ' <span class="muted" style="font-size:11.5px">' + esc([device.os, device.app_version].filter(Boolean).join(' · ')) + ' · ' + esc(ago(device.last_seen)) + '</span>' +
-          (group.items.length > 1 ? ' <span class="muted" style="font-size:11px">(ещё ' + (group.items.length - 1) + ' ' + (group.items.length - 1 === 1 ? 'версия' : (group.items.length - 1 < 5 ? 'версии' : 'версий')) + ')</span>' : '') + '</div>';
+          ' <span class="muted" style="font-size:11.5px">' + esc([device.os, device.app_version].filter(Boolean).join(' · ')) + ' · ' + esc(ago(device.last_seen)) + '</span></div>';
       }).join('') + '</div></div>' : '') +
     '<div class="actions">' +
       '<button class="btn small" data-uact="edit">Подписка</button>' +
@@ -1059,6 +1048,16 @@ function providerExpired(provider) {
 }
 function providerFailed(provider) {
   return !!provider && provider.ok === false && !providerExpired(provider);
+}
+function providerCabinetUrl(provider) {
+  var item = catalogSubscription(provider && provider.id);
+  var url = String((item && item.url) || (provider && provider.url) || '').trim();
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+function providerCabinetLink(provider) {
+  var url = providerCabinetUrl(provider);
+  if (!url) return '';
+  return ' <a class="provider-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" title="Открыть сайт провайдера">кабинет ↗</a>';
 }
 function userLabel(user) {
   return user.display_name ? user.username + ' · ' + user.display_name : user.username;
@@ -1416,9 +1415,7 @@ function subscriptionSnapshots(item) {
     }
   });
   return Object.keys(groups).map(function (key) {
-    var group = groups[key];
-    group.entry.versions = group.items.length - 1;
-    return group.entry;
+    return groups[key].entry;
   });
 }
 
@@ -1651,6 +1648,7 @@ function subscriptionCard(item) {
   var catalogNodes = Number(item.nodesTotal) || previewNodes.length;
   var nodes = catalogNodes || liveNodes;
   var expired = subscriptionExpired(item);
+  var cabinetUrl = /^https?:\/\//i.test(String(item.url || '')) ? String(item.url).trim() : '';
   var synced = '';
   var selected = '';
   snapshots.forEach(function (snap) {
@@ -1663,13 +1661,13 @@ function subscriptionCard(item) {
     var owner = deviceOwner(snap.device);
     var snapExpired = expired || providerExpired(snap.provider);
     var title = '<div class="grow"><b>' + esc(snap.device.name || snap.device.model || snap.device.hwid) + '</b>' +
-      '<small>' + esc([owner ? owner.username : 'без аккаунта', snap.device.os, snap.device.app_version].filter(Boolean).join(' · ') +
-        (snap.versions ? ' · ещё ' + snap.versions + ' ' + (snap.versions === 1 ? 'версия' : (snap.versions < 5 ? 'версии' : 'версий')) : '')) + '</small></div>';
+      '<small>' + esc([owner ? owner.username : 'без аккаунта', snap.device.os, snap.device.app_version].filter(Boolean).join(' · ')) + '</small></div>';
     return '<div class="sub-device">' + title +
       (snapExpired ? badge('истекла', 'red') : (snap.provider.ok === false ? badge('ошибка', 'red') : badge('работает', 'green'))) +
       '<span class="muted">' + esc(snap.provider.nodes != null ? snap.provider.nodes + ' узлов' : '—') + '</span>' +
       (!snapExpired && snap.provider.error ? '<span style="color:#ffb4b6;font-size:10.5px;width:100%">' + esc(snap.provider.error) + '</span>' : '') +
       (snapExpired ? '<span class="muted" style="font-size:10.5px;width:100%">Подписка истекла — клиент больше не получает её серверы, старые ошибки загрузки не учитываются.</span>' : '') +
+      providerCabinetLink(snap.provider) +
       '</div>';
   }).join('');
 
@@ -1704,7 +1702,8 @@ function subscriptionCard(item) {
       '<div><span>Синхронизация</span><b>' + esc(synced ? dateText(synced) : '—') + '</b></div>' +
       '<div><span>Добавлена</span><b>' + esc(dateText(item.createdAt)) + '</b></div>' +
       (selected ? '<div style="grid-column:1/-1"><span>Выбранный узел</span><b>' + esc(selected) + '</b></div>' : '') +
-      '<div style="grid-column:1/-1"><span>Ссылка подписки</span><b class="sub-url" title="' + esc(item.url || '') + '">' + esc(item.url || '—') + '</b></div>' +
+      '<div style="grid-column:1/-1"><span>Ссылка провайдера</span><b class="sub-url" title="' + esc(item.url || '') + '">' +
+        (cabinetUrl ? '<a href="' + esc(cabinetUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(item.url) + '</a>' : '—') + '</b></div>' +
     '</div>' +
     (expired
       ? '<div class="hint" style="color:#fbbf24;margin-top:8px">Подписка истекла — серверы больше не передаются клиентам.</div>'
@@ -1714,6 +1713,7 @@ function subscriptionCard(item) {
       : '') +
     (deviceHtml ? '<div class="sub-devices">' + deviceHtml + '</div>' : '<div class="hint">Устройства ещё не присылали снимок этой подписки.</div>') +
     '<div class="actions">' +
+      (cabinetUrl ? '<a class="btn small ghost" href="' + esc(cabinetUrl) + '" target="_blank" rel="noopener noreferrer">Открыть у провайдера</a>' : '') +
       '<button class="btn small" data-sub-edit="' + esc(item.id) + '">Изменить</button>' +
       '<button class="btn small danger ghost" data-sub-delete="' + esc(item.id) + '">Удалить</button>' +
     '</div>' +
@@ -1739,12 +1739,11 @@ function renderDeviceSubscriptions() {
   return '<div class="panel-head" style="margin:22px 0 10px"><i class="dot"></i>Снимки с устройств' +
     '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">что клиенты реально получили от провайдеров</span></div>' +
     '<div class="grid">' + groups.map(function (group) {
-      return deviceSubscriptionCard(group.latest, group.items.length - 1);
+      return deviceSubscriptionCard(group.latest);
     }).join('') + '</div>';
 }
 
-function deviceSubscriptionCard(device, versions) {
-  versions = versions || 0;
+function deviceSubscriptionCard(device) {
   var sub = deviceSubscription(device);
   var owner = deviceOwner(device);
   var providers = Array.isArray(sub.providers) ? sub.providers : [];
@@ -1755,14 +1754,12 @@ function deviceSubscriptionCard(device, versions) {
     return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', isExpired ? '' : (provider.ok === false ? 'red' : 'green')) +
       '<span class="muted" style="font-size:11.5px;flex:1">' + esc(provider.id || '') +
       (isExpired ? ' · подписка истекла' : (provider.nodes != null ? ' · ' + provider.nodes + ' узлов' : '')) +
-      (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
+      (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span>' + providerCabinetLink(provider) + '</div>';
   }).join('');
   return '<article class="card' + (online(device) ? '' : ' offline') + '">' +
     '<div class="card-head"><div style="min-width:0;flex:1">' +
       '<div class="card-title">' + esc(device.name || device.model || device.hwid) + '</div>' +
-      '<div class="card-sub">' + esc(owner ? owner.username : 'без аккаунта') + ' · ' + esc(device.hwid) +
-      (versions ? ' · ещё ' + versions + ' ' + (versions === 1 ? 'версия' : (versions < 5 ? 'версии' : 'версий')) : '') + '</div></div>' +
-      (versions ? badge('+ ' + versions, 'blue') + ' ' : '') +
+      '<div class="card-sub">' + esc(owner ? owner.username : 'без аккаунта') + ' · ' + esc(device.hwid) + '</div></div>' +
       (online(device) ? badge('онлайн', 'green') : badge('офлайн', '')) +
     '</div>' +
     '<div class="kv">' +
