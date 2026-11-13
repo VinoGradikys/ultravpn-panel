@@ -578,7 +578,14 @@ function renderAppView(device) {
       }).join('') + '</div>';
     }
     if (Array.isArray(subscription.errors) && subscription.errors.length) {
-      html += '<div class="hint" style="color:#ffb4b6">' + subscription.errors.map(esc).join('<br>') + '</div>';
+      var expiredNames = providers.filter(providerExpired).map(function (entry) { return entry.name || entry.id; });
+      var visibleErrors = subscription.errors.filter(function (entry) {
+        var text = String(entry);
+        return !expiredNames.some(function (name) { return name && text.indexOf(name + ':') === 0; });
+      });
+      if (visibleErrors.length) {
+        html += '<div class="hint" style="color:#ffb4b6">' + visibleErrors.map(esc).join('<br>') + '</div>';
+      }
     }
   }
   html += '<details><summary>Сырой JSON от приложения</summary><pre>' + esc(JSON.stringify(view, null, 2)) + '</pre></details>';
