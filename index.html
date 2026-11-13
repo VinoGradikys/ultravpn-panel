@@ -772,9 +772,16 @@ function renderUsers() {
 function userCard(user) {
   var pub = user.public || user;
   var expired = pub.expiresAt && pub.expiresAt < Date.now();
+  // admin_list_users не отдаёт archived, поэтому берём признак архива из
+  // общего списка устройств. Иначе архивные устройства продолжают
+  // учитываться в счётчике пользователя.
+  var archivedHwids = {};
+  (state.devices || []).forEach(function (device) {
+    if (device.archived && device.hwid) archivedHwids[device.hwid] = true;
+  });
   var userDeviceGroups = deviceGroups(
     (Array.isArray(user.devices) ? user.devices : []).filter(function (device) {
-      return !device.archived;
+      return !device.archived && !archivedHwids[device.hwid];
     })
   );
   return '<article class="card" data-user="' + esc(user.id) + '">' +
