@@ -449,8 +449,9 @@ $('search').addEventListener('input', function () {
 
 function render() {
   $('whoami').textContent = whoamiText();
-  $('statDevices').textContent = state.devices.filter(function (d) { return !d.archived; }).length;
-  $('statOnline').textContent = state.devices.filter(function (d) { return !d.archived && online(d); }).length;
+  var activeDeviceGroups = deviceGroups(state.devices.filter(function (d) { return !d.archived; }));
+  $('statDevices').textContent = activeDeviceGroups.length;
+  $('statOnline').textContent = activeDeviceGroups.filter(groupOnline).length;
   $('statUsers').textContent = state.users.length;
   $('statFeedback').textContent = state.feedback.filter(function (f) { return f.status === 'new'; }).length;
   $('createUserBtn').classList.toggle('hidden', state.tab !== 'users');
@@ -475,18 +476,70 @@ function filtered(list, mapper) {
 }
 
 // ------------------------------------------------------------------ devices
-function renderDevices() {
-  var list = filtered(state.devices, function (d) {
-    var owner = deviceOwner(d);
-    return [d.name, d.hwid, d.model, d.os, d.server, d.node_name, owner && owner.username].join(' ');
-  });
-  if (!list.length) {
-    return '<div class="empty"><b>Устройств нет</b>Клиент появится здесь после первого входа и heartbeat.</div>';
-  }
-  return '<div class="grid">' + list.map(deviceCard).join('') + '</div>';
+// Одна и та же модель может появляться несколько раз после переустановки
+// или перехода между Full и Lite: у каждой установки свой HWID. Для админки
+// это одно физическое устройство, поэтому склеиваем записи по аккаунту,
+// платформе и модели, а старые версии показываем в раскрывающемся списке.
+function deviceGroupKey(device) {
+  if (!device) return '';
+  if (!device.account_id) return 'hwid:' + (device.hwid || '');
+  return [
+    device.account_id,
+    String(device.platform || device.os || '').toLowerCase(),
+    String(device.model || device.name || '').trim().toLowerCase()
+  ].join('|');
 }
 
-function deviceCard(device) {
+function deviceGroups(devices) {
+  var map = {};
+  (devices || []).forEach(function (device) {
+    var key = deviceGroupKey(device);
+    if (!map[key]) map[key] = { key: key, items: [] };
+    map[key].items.push(device);
+  });
+  var groups = Object.keys(map).map(function (key) {
+    var group = map[key];
+    group.items.sort(function (a, b) {
+      return new Date(b.last_seen || 0).getTime() - new Date(a.last_seen || 0).getTime();
+    });
+    group.latest = group.items.filter(function (device) { return !device.archived; })[0] || group.items[0];
+    return group;
+  });
+  groups.sort(function (a, b) {
+    return new Date(b.latest.last_seen || 0).getTime() - new Date(a.latest.last_seen || 0).getTime();
+  });
+  return groups;
+}
+
+function groupOnline(group) {
+  return group.items.some(function (device) { return online(device); });
+}
+
+function dedupedDevices(devices) {
+  return deviceGroups(devices).map(function (group) { return group.latest; });
+}
+
+function renderDevices() {
+  var groups = deviceGroups(state.devices);
+  if (state.search) {
+    groups = groups.filter(function (group) {
+      return group.items.some(function (device) {
+        var owner = deviceOwner(device);
+        return [device.name, device.hwid, device.model, device.os, device.server, device.node_name, owner && owner.username]
+          .join(' ').toLowerCase().indexOf(state.search) >= 0;
+      });
+    });
+  }
+  if (!groups.length) {
+    return '<div class="empty"><b>Устройств нет</b>Клиент появится здесь после первого входа и heartbeat.</div>';
+  }
+  return '<div class="grid">' + groups.map(function (group) {
+    return deviceCard(group.latest, group.items.filter(function (device) { return device !== group.latest; }));
+  }).join('') + '</div>';
+}
+
+function deviceCard(device, versions) {
+  versions = versions || [];
   var up = online(device);
   var owner = deviceOwner(device);
   var ownerName = owner ? owner.username : (device.account_id ? 'аккаунт удалён' : 'без аккаунта');
@@ -496,7 +549,8 @@ function deviceCard(device) {
       '<div style="min-width:0;flex:1"><div class="card-title">' + esc(device.name || device.model || device.hwid) + '</div>' +
       '<div class="card-sub">' + esc(device.hwid) + '</div></div>' +
       '<div style="text-align:right">' + (up ? badge('онлайн', 'green') : badge('офлайн', '')) +
-      (device.blocked ? ' ' + badge('блок', 'red') : '') + '</div>' +
+      (device.blocked ? ' ' + badge('блок', 'red') : '') +
+      (versions.length ? ' ' + badge('ещё ' + versions.length + ' ' + (versions.length === 1 ? 'версия' : (versions.length < 5 ? 'версии' : 'версий')), 'blue') : '') + '</div>' +
     '</div>' +
     '<div class="kv">' +
       '<div><span>Пользователь</span><b>' + esc(ownerName) + '</b></div>' +
@@ -513,6 +567,19 @@ function deviceCard(device) {
       '<div><span>Ошибка</span><b style="color:' + (device.last_error ? '#ffb4b6' : 'inherit') + '">' + esc(device.last_error || '—') + '</b></div>' +
     '</div>' +
     renderAppView(device) +
+    (versions.length
+      ? '<details class="device-versions"><summary>Другие версии этого устройства (' + versions.length + ')</summary>' +
+        '<div class="sub-devices">' + versions.map(function (old) {
+          return '<div class="sub-device" data-hwid="' + esc(old.hwid) + '">' +
+            '<div class="grow"><b>' + esc(old.app_version || 'версия не указана') + '</b>' +
+            '<small>' + esc([old.os, old.core_version, 'HWID ' + String(old.hwid || '').slice(0, 8) + '…', ago(old.last_seen)].filter(Boolean).join(' · ')) + '</small></div>' +
+            (old.archived ? badge('в архиве', '') : '') +
+            '<button class="btn small ghost" data-act="archive" type="button">' + (old.archived ? 'Вернуть' : 'В архив') + '</button>' +
+            '</div>';
+        }).join('') + '</div>' +
+        '<div class="hint">Записи одной модели с разными HWID: переустановка или Full/Lite-версии. Карточка показывает самую свежую запись.</div>' +
+        '</details>'
+      : '') +
     '<div class="actions">' +
       '<button class="btn small" data-act="vpn_on">VPN вкл</button>' +
       '<button class="btn small" data-act="vpn_off">VPN выкл</button>' +
@@ -669,6 +736,7 @@ function renderUsers() {
 function userCard(user) {
   var pub = user.public || user;
   var expired = pub.expiresAt && pub.expiresAt < Date.now();
+  var userDeviceGroups = deviceGroups(Array.isArray(user.devices) ? user.devices : []);
   return '<article class="card" data-user="' + esc(user.id) + '">' +
     '<div class="card-head"><div style="min-width:0;flex:1">' +
       '<div class="card-title">' + esc(user.username) + '</div>' +
@@ -679,16 +747,18 @@ function userCard(user) {
       '<div><span>Тариф</span><b>' + esc(user.plan || '—') + '</b></div>' +
       '<div><span>До</span><b>' + esc(user.expires_at ? dateText(user.expires_at) : 'бессрочно') + '</b></div>' +
       '<div><span>Лимит трафика</span><b>' + (Number(user.traffic_limit) ? bytes(user.traffic_limit) : 'без лимита') + '</b></div>' +
-      '<div><span>Устройств</span><b>' + (user.devices ? user.devices.length : 0) + '</b></div>' +
+      '<div><span>Устройств</span><b>' + userDeviceGroups.length + '</b></div>' +
       '<div><span>Последний вход</span><b>' + esc(user.last_login_at ? ago(user.last_login_at) : '—') + '</b></div>' +
       '<div><span>Создан</span><b>' + esc(dateText(user.created_at)) + '</b></div>' +
       '<div class="wide" style="grid-column:1/-1"><span>Подписки</span><b>' + esc((user.subscription && Array.isArray(user.subscription.providerIds) ? user.subscription.providerIds.length : 0) + ' из ' + state.subscriptions.length + ' доступных') + '</b></div>' +
       (user.note ? '<div style="grid-column:1/-1"><span>Заметка</span><b>' + esc(user.note) + '</b></div>' : '') +
     '</div>' +
-    (user.devices && user.devices.length ? '<div class="section"><div class="section-head"><i class="dot"></i>Устройства</div><div class="section-body">' +
-      user.devices.map(function (device) {
+    (userDeviceGroups.length ? '<div class="section"><div class="section-head"><i class="dot"></i>Устройства</div><div class="section-body">' +
+      userDeviceGroups.map(function (group) {
+        var device = group.latest;
         return '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b style="font-size:12.5px">' + esc(device.name || device.hwid) + '</b>' +
-          ' <span class="muted" style="font-size:11.5px">' + esc([device.os, device.app_version].filter(Boolean).join(' · ')) + ' · ' + esc(ago(device.last_seen)) + '</span></div>';
+          ' <span class="muted" style="font-size:11.5px">' + esc([device.os, device.app_version].filter(Boolean).join(' · ')) + ' · ' + esc(ago(device.last_seen)) + '</span>' +
+          (group.items.length > 1 ? ' <span class="muted" style="font-size:11px">(ещё ' + (group.items.length - 1) + ' ' + (group.items.length - 1 === 1 ? 'версия' : (group.items.length - 1 < 5 ? 'версии' : 'версий')) + ')</span>' : '') + '</div>';
       }).join('') + '</div></div>' : '') +
     '<div class="actions">' +
       '<button class="btn small" data-uact="edit">Подписка</button>' +
@@ -1171,8 +1241,9 @@ function platformRows(devices) {
 
 function renderHome() {
   var now = Date.now();
-  var devices = state.devices.filter(function (d) { return !d.archived; });
-  var archived = state.devices.length - devices.length;
+  var activeDevices = state.devices.filter(function (d) { return !d.archived; });
+  var devices = dedupedDevices(activeDevices);
+  var archived = state.devices.length - activeDevices.length;
   var onlineDevices = devices.filter(online);
   var vpnDevices = devices.filter(deviceVpnOn);
   var users = state.users;
@@ -1333,7 +1404,22 @@ function subscriptionSnapshots(item) {
     if (!found) return;
     result.push({ device: device, snapshot: snap, provider: found });
   });
-  return result;
+  var groups = {};
+  result.forEach(function (entry) {
+    var key = deviceGroupKey(entry.device);
+    if (!groups[key]) groups[key] = { items: [], stamp: 0, entry: null };
+    groups[key].items.push(entry);
+    var stamp = new Date((entry.snapshot && entry.snapshot.syncedAt) || entry.device.last_seen || 0).getTime();
+    if (!groups[key].entry || stamp >= groups[key].stamp) {
+      groups[key].stamp = stamp;
+      groups[key].entry = entry;
+    }
+  });
+  return Object.keys(groups).map(function (key) {
+    var group = groups[key];
+    group.entry.versions = group.items.length - 1;
+    return group.entry;
+  });
 }
 
 function subscriptionExpired(item) {
@@ -1577,7 +1663,8 @@ function subscriptionCard(item) {
     var owner = deviceOwner(snap.device);
     var snapExpired = expired || providerExpired(snap.provider);
     var title = '<div class="grow"><b>' + esc(snap.device.name || snap.device.model || snap.device.hwid) + '</b>' +
-      '<small>' + esc([owner ? owner.username : 'без аккаунта', snap.device.os, snap.device.app_version].filter(Boolean).join(' · ')) + '</small></div>';
+      '<small>' + esc([owner ? owner.username : 'без аккаунта', snap.device.os, snap.device.app_version].filter(Boolean).join(' · ') +
+        (snap.versions ? ' · ещё ' + snap.versions + ' ' + (snap.versions === 1 ? 'версия' : (snap.versions < 5 ? 'версии' : 'версий')) : '')) + '</small></div>';
     return '<div class="sub-device">' + title +
       (snapExpired ? badge('истекла', 'red') : (snap.provider.ok === false ? badge('ошибка', 'red') : badge('работает', 'green'))) +
       '<span class="muted">' + esc(snap.provider.nodes != null ? snap.provider.nodes + ' узлов' : '—') + '</span>' +
@@ -1635,24 +1722,29 @@ function subscriptionCard(item) {
 }
 
 function renderDeviceSubscriptions() {
-  var devices = state.devices.filter(function (d) { return !!deviceSubscription(d); });
+  var groups = deviceGroups(state.devices.filter(function (d) { return !!deviceSubscription(d); }));
   var needle = state.search;
   if (needle) {
-    devices = devices.filter(function (device) {
-      var owner = deviceOwner(device);
-      var sub = deviceSubscription(device);
-      var providers = Array.isArray(sub.providers) ? sub.providers : [];
-      return [device.name, device.hwid, owner && owner.username, providers.map(function (p) { return [p.id, p.name].join(' '); }).join(' ')]
-        .join(' ').toLowerCase().indexOf(needle) >= 0;
+    groups = groups.filter(function (group) {
+      return group.items.some(function (device) {
+        var owner = deviceOwner(device);
+        var sub = deviceSubscription(device);
+        var providers = Array.isArray(sub.providers) ? sub.providers : [];
+        return [device.name, device.hwid, owner && owner.username, providers.map(function (p) { return [p.id, p.name].join(' '); }).join(' ')]
+          .join(' ').toLowerCase().indexOf(needle) >= 0;
+      });
     });
   }
-  if (!devices.length) return '';
+  if (!groups.length) return '';
   return '<div class="panel-head" style="margin:22px 0 10px"><i class="dot"></i>Снимки с устройств' +
     '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">что клиенты реально получили от провайдеров</span></div>' +
-    '<div class="grid">' + devices.map(deviceSubscriptionCard).join('') + '</div>';
+    '<div class="grid">' + groups.map(function (group) {
+      return deviceSubscriptionCard(group.latest, group.items.length - 1);
+    }).join('') + '</div>';
 }
 
-function deviceSubscriptionCard(device) {
+function deviceSubscriptionCard(device, versions) {
+  versions = versions || 0;
   var sub = deviceSubscription(device);
   var owner = deviceOwner(device);
   var providers = Array.isArray(sub.providers) ? sub.providers : [];
@@ -1668,7 +1760,9 @@ function deviceSubscriptionCard(device) {
   return '<article class="card' + (online(device) ? '' : ' offline') + '">' +
     '<div class="card-head"><div style="min-width:0;flex:1">' +
       '<div class="card-title">' + esc(device.name || device.model || device.hwid) + '</div>' +
-      '<div class="card-sub">' + esc(owner ? owner.username : 'без аккаунта') + ' · ' + esc(device.hwid) + '</div></div>' +
+      '<div class="card-sub">' + esc(owner ? owner.username : 'без аккаунта') + ' · ' + esc(device.hwid) +
+      (versions ? ' · ещё ' + versions + ' ' + (versions === 1 ? 'версия' : (versions < 5 ? 'версии' : 'версий')) : '') + '</div></div>' +
+      (versions ? badge('+ ' + versions, 'blue') + ' ' : '') +
       (online(device) ? badge('онлайн', 'green') : badge('офлайн', '')) +
     '</div>' +
     '<div class="kv">' +
