@@ -173,8 +173,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 'use strict';
-var SUPABASE_URL = 'https://jzoilllbyfitlsxvaobd.supabase.co';
-var SUPABASE_ANON_KEY = 'sb_publishable_T-yxdb2fgqyhsPa1Gk8TyA_ACPTWJ0i';
+var SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+var SUPABASE_ANON_KEY = 'PASTE_ANON_KEY';
 var PANEL_FUNCTION = SUPABASE_URL + '/functions/v1/panel';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -445,6 +445,7 @@ function renderAppView(device) {
       '<div class="section-body"><div class="hint">Клиент ещё не присылал снимок подписки.</div></div></div>';
   }
   var identity = view.identity && typeof view.identity === 'object' ? view.identity : {};
+  var provider = view.provider && typeof view.provider === 'object' ? view.provider : null;
   var subscription = view.subscription && typeof view.subscription === 'object' ? view.subscription : null;
   var updated = view.updatedAt ? dateText(view.updatedAt) : (device.config_view_at ? dateText(device.config_view_at) : '—');
   var html = '<div class="section"><div class="section-head"><i class="dot"></i>Как видит приложение' +
@@ -459,6 +460,16 @@ function renderAppView(device) {
       cell('identity.osVersion', identity.osVersion || '—') +
       cell('identity.core', identity.core || '—') +
     '</div>';
+  if (provider) {
+    html += '<div class="section-head" style="margin-top:16px"><i class="dot"></i>Провайдер видит' +
+      '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:10.5px">из настроек</span></div>' +
+      '<div class="identity" style="margin-top:8px">' +
+        cell('model', provider.model || '—') +
+        cell('os', provider.os || '—') +
+        cell('osVersion', provider.osVersion || '—') +
+        cell('core', provider.core || '—') +
+      '</div>';
+  }
   if (subscription) {
     var providers = Array.isArray(subscription.providers) ? subscription.providers : [];
     html += '<div class="kv" style="margin-top:12px">' +
