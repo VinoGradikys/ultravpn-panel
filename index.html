@@ -527,9 +527,13 @@ function clientSummary(device) {
 
 function deviceGroupKey(device) {
   if (!device) return '';
-  if (!device.account_id) return 'hwid:' + (device.hwid || '');
+  // Группируем только записи одного и того же устройства. Раньше ключ
+  // включал модель и редакцию, поэтому два одинаковых телефона одного
+  // пользователя склеивались в одну карточку и считались одним устройством.
+  var hwid = String(device.hwid || '').trim();
+  if (hwid) return 'hwid:' + hwid;
   return [
-    device.account_id,
+    device.account_id || '',
     String(device.platform || device.os || '').toLowerCase(),
     String(device.model || device.name || '').trim().toLowerCase(),
     deviceEdition(device)
@@ -768,7 +772,11 @@ function renderUsers() {
 function userCard(user) {
   var pub = user.public || user;
   var expired = pub.expiresAt && pub.expiresAt < Date.now();
-  var userDeviceGroups = deviceGroups(Array.isArray(user.devices) ? user.devices : []);
+  var userDeviceGroups = deviceGroups(
+    (Array.isArray(user.devices) ? user.devices : []).filter(function (device) {
+      return !device.archived;
+    })
+  );
   return '<article class="card" data-user="' + esc(user.id) + '">' +
     '<div class="card-head"><div style="min-width:0;flex:1">' +
       '<div class="card-title">' + esc(user.username) + '</div>' +
