@@ -109,6 +109,41 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 .check{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--muted);font-size:13px}
 .check input{width:auto;accent-color:var(--red)}
 .hint{color:var(--muted2);font-size:11px;line-height:1.5;margin-top:6px}
+
+/* ---------- dashboard / subscriptions ---------- */
+.home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.panel{background:linear-gradient(180deg,var(--surface),#111116);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:0 10px 34px rgba(0,0,0,.18);min-width:0}
+.panel.wide{grid-column:1/-1}
+.panel-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:12.5px;letter-spacing:.02em;margin-bottom:12px;flex-wrap:wrap}
+.panel-head .dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(229,72,77,.12)}
+.panel-head .spacer{flex:1}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px}
+.metric{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 11px;min-width:0}
+.metric b{display:block;font-size:21px;letter-spacing:-.02em;line-height:1.15}
+.metric span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.metric em{display:block;font-style:normal;color:var(--muted2);font-size:10.5px;margin-top:3px}
+.metric.red b{color:var(--red2)}
+.metric.green b{color:var(--green)}
+.metric.amber b{color:var(--amber)}
+.bar-row{display:grid;grid-template-columns:minmax(80px,140px) 1fr 34px;gap:9px;align-items:center;margin-bottom:8px;font-size:12px}
+.bar-row:last-child{margin-bottom:0}
+.bar-row>span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-row>b{text-align:right;font-weight:600;font-size:11.5px;color:var(--muted)}
+.bar{height:6px;border-radius:999px;background:var(--surface3);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--red2),var(--red-dark));min-width:2px}
+.list-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.list-row:last-child{border-bottom:0;padding-bottom:0}
+.list-row:first-child{padding-top:0}
+.list-row .when{flex:0 0 96px;color:var(--muted2);font-size:11px}
+.list-row .grow{flex:1;min-width:0;word-break:break-word}
+.list-row .grow small{display:block;color:var(--muted);font-size:11px;margin-top:2px;word-break:break-word}
+.sub-url{font-size:11px;word-break:break-all;color:#c9c9d2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.sub-devices{display:flex;flex-direction:column;gap:5px;margin-top:10px}
+.sub-device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11.5px}
+.sub-device .grow{flex:1;min-width:0}
+.sub-device small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.split-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.home-grid{grid-template-columns:1fr}.split-2{grid-template-columns:1fr}}
 @media(max-width:720px){
   .wrap{padding:12px 12px 50px}
   .stats{grid-template-columns:repeat(2,1fr)}
@@ -146,8 +181,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
   </header>
 
   <nav class="tabs" id="tabs">
-    <button class="tab active" data-tab="devices" type="button">Устройства</button>
+    <button class="tab active" data-tab="home" type="button">Главная</button>
+    <button class="tab" data-tab="devices" type="button">Устройства</button>
     <button class="tab" data-tab="users" type="button">Пользователи</button>
+    <button class="tab" data-tab="subscriptions" type="button">Подписки</button>
     <button class="tab" data-tab="settings" type="button">Настройки</button>
     <button class="tab" data-tab="feedback" type="button">Обращения</button>
     <button class="tab" data-tab="events" type="button">События</button>
@@ -160,7 +197,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
     <div class="stat"><b id="statFeedback">—</b><span>новых обращений</span></div>
   </div>
 
-  <div class="toolbar">
+  <div class="toolbar" id="toolbar">
     <input class="input search" id="search" placeholder="Поиск по имени, HWID, пользователю…">
     <button class="btn primary hidden" id="createUserBtn" type="button">+ Пользователь</button>
   </div>
@@ -181,7 +218,7 @@ var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 var state = {
   email: '',
-  tab: 'devices',
+  tab: 'home',
   search: '',
   devices: [],
   users: [],
@@ -189,6 +226,7 @@ var state = {
   events: [],
   commands: [],
   settings: {},
+  loadedAt: 0,
   loading: false,
   realtime: null
 };
@@ -317,6 +355,7 @@ async function load() {
     state.commands = results[3].data || [];
     state.users = (results[4] && results[4].ok && results[4].data.users) ? results[4].data.users : [];
     state.settings = (results[5] && results[5].ok && results[5].data.settings) ? results[5].data.settings : {};
+    state.loadedAt = Date.now();
     render();
   } catch (error) {
     toast('Ошибка загрузки: ' + (error.message || error));
@@ -375,10 +414,14 @@ function render() {
   $('statUsers').textContent = state.users.length;
   $('statFeedback').textContent = state.feedback.filter(function (f) { return f.status === 'new'; }).length;
   $('createUserBtn').classList.toggle('hidden', state.tab !== 'users');
+  $('stats').classList.toggle('hidden', state.tab === 'home');
+  $('toolbar').classList.toggle('hidden', state.tab === 'home');
   $('search').classList.toggle('hidden', state.tab === 'settings');
 
-  if (state.tab === 'devices') $('view').innerHTML = renderDevices();
+  if (state.tab === 'home') $('view').innerHTML = renderHome();
+  else if (state.tab === 'devices') $('view').innerHTML = renderDevices();
   else if (state.tab === 'users') $('view').innerHTML = renderUsers();
+  else if (state.tab === 'subscriptions') $('view').innerHTML = renderSubscriptions();
   else if (state.tab === 'settings') $('view').innerHTML = renderSettings();
   else if (state.tab === 'feedback') $('view').innerHTML = renderFeedback();
   else $('view').innerHTML = renderEvents();
@@ -848,6 +891,357 @@ function renderEvents() {
       '<div style="min-width:0"><b style="font-size:12.5px">' + esc(item.type) + '</b>' +
       '<div class="muted" style="font-size:12px;word-break:break-word">' + esc(item.message || item.hwid) + '</div></div></div>';
   }).join('') + '</div>';
+}
+
+// ------------------------------------------------------------------ home
+function deviceVpnOn(device) {
+  var value = String(device.vpn_state || '').toLowerCase();
+  return value === 'on' || value === 'connected' || value === 'active';
+}
+function expiresAt(user) {
+  return user && user.expires_at ? new Date(user.expires_at).getTime() : 0;
+}
+function num(value) {
+  return (Number(value) || 0).toLocaleString('ru-RU');
+}
+function countBy(list, mapper) {
+  var map = {};
+  list.forEach(function (item) {
+    var key = mapper(item) || 'неизвестно';
+    map[key] = (map[key] || 0) + 1;
+  });
+  return Object.keys(map).map(function (key) {
+    return { key: key, count: map[key] };
+  }).sort(function (a, b) { return b.count - a.count; });
+}
+function metrics(list) {
+  return '<div class="metric-grid">' + list.map(function (metric) {
+    return '<div class="metric' + (metric.cls ? ' ' + metric.cls : '') + '"><b>' + esc(metric.value) + '</b>' +
+      '<span>' + esc(metric.label) + '</span>' + (metric.hint ? '<em>' + esc(metric.hint) + '</em>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function bars(rows, total) {
+  if (!rows.length) return '<div class="hint">Нет данных.</div>';
+  return rows.slice(0, 8).map(function (row) {
+    var width = total ? Math.max(3, Math.round(row.count / total * 100)) : 3;
+    return '<div class="bar-row"><span title="' + esc(row.key) + '">' + esc(row.key) + '</span>' +
+      '<div class="bar"><i style="width:' + width + '%"></i></div><b>' + esc(row.count) + '</b></div>';
+  }).join('');
+}
+function homePanel(title, body, options) {
+  options = options || {};
+  return '<section class="panel' + (options.wide ? ' wide' : '') + '"><div class="panel-head"><i class="dot"></i>' + esc(title) +
+    (options.extra ? '<span class="spacer"></span>' + options.extra : '') + '</div>' + body + '</section>';
+}
+function listRow(when, title, text) {
+  return '<div class="list-row"><div class="when">' + esc(when) + '</div><div class="grow"><b>' + esc(title) + '</b>' +
+    (text ? '<small>' + esc(text) + '</small>' : '') + '</div></div>';
+}
+function deviceSubscription(device) {
+  var view = device.config_view && typeof device.config_view === 'object' ? device.config_view : null;
+  return view && view.subscription && typeof view.subscription === 'object' ? view.subscription : null;
+}
+function providerClientId(name) {
+  return 'panel_' + String(name || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+}
+function userLabel(user) {
+  return user.display_name ? user.username + ' · ' + user.display_name : user.username;
+}
+
+function renderHome() {
+  var now = Date.now();
+  var devices = state.devices.filter(function (d) { return !d.archived; });
+  var archived = state.devices.length - devices.length;
+  var onlineDevices = devices.filter(online);
+  var vpnDevices = devices.filter(deviceVpnOn);
+  var users = state.users;
+  var blocked = users.filter(function (u) { return u.status === 'blocked'; });
+  var expired = users.filter(function (u) { var t = expiresAt(u); return t && t < now; });
+  var expiring = users.filter(function (u) { var t = expiresAt(u); return t && t >= now && t - now <= 7 * 86400000; });
+  var withSubs = users.filter(function (u) {
+    return u.subscription && Array.isArray(u.subscription.providers) && u.subscription.providers.length;
+  });
+  var providerCount = withSubs.reduce(function (sum, u) { return sum + u.subscription.providers.length; }, 0);
+  var reports = 0, healthy = 0, failing = 0, nodes = 0;
+  var failedProviders = [];
+  devices.forEach(function (device) {
+    var sub = deviceSubscription(device);
+    if (!sub || !Array.isArray(sub.providers)) return;
+    sub.providers.forEach(function (provider) {
+      reports++;
+      nodes += Number(provider.nodes) || 0;
+      if (provider.ok === false) {
+        failing++;
+        failedProviders.push({ device: device, provider: provider });
+      } else healthy++;
+    });
+  });
+  var pendingCommands = state.commands.filter(function (c) { return c.status === 'pending'; }).length;
+  var errorCommands = state.commands.filter(function (c) { return c.status === 'error' || c.status === 'failed'; }).length;
+  var newFeedback = state.feedback.filter(function (f) { return f.status === 'new'; }).length;
+  var eventsDay = state.events.filter(function (e) { return e.created_at && now - new Date(e.created_at).getTime() < 86400000; }).length;
+  var traffic = devices.reduce(function (acc, d) {
+    acc.sessionUp += Number(d.session_up) || 0;
+    acc.sessionDown += Number(d.session_down) || 0;
+    acc.totalUp += Number(d.total_up) || 0;
+    acc.totalDown += Number(d.total_down) || 0;
+    return acc;
+  }, { sessionUp: 0, sessionDown: 0, totalUp: 0, totalDown: 0 });
+  var totalTraffic = traffic.totalUp + traffic.totalDown;
+  var versionRows = countBy(devices, function (d) { return d.app_version || 'неизвестно'; });
+  var osRows = countBy(devices, function (d) { return d.os || d.platform || 'неизвестно'; });
+
+  var attention = expired.slice(0, 4).map(function (user) {
+    return listRow('истёк', userLabel(user), (user.plan || 'без тарифа') + ' · ' + dateText(user.expires_at));
+  }).join('');
+  attention += expiring.slice(0, 4).map(function (user) {
+    var days = Math.max(1, Math.ceil((expiresAt(user) - now) / 86400000));
+    return listRow('через ' + days + ' дн', userLabel(user), (user.plan || 'без тарифа') + ' · до ' + dateText(user.expires_at));
+  }).join('');
+  attention += failedProviders.slice(0, 4).map(function (item) {
+    return listRow('ошибка', (item.provider.name || item.provider.id || 'провайдер') + ' · ' + (item.device.name || item.device.hwid),
+      item.provider.error || 'подписка не загрузилась');
+  }).join('');
+
+  var eventRows = state.events.slice(0, 8).map(function (event) {
+    return listRow(ago(event.created_at), event.type || 'событие', [event.message, event.hwid].filter(Boolean).join(' · '));
+  }).join('');
+
+  var onlineRows = onlineDevices.slice(0, 6).map(function (device) {
+    var owner = deviceOwner(device);
+    return listRow(ago(device.last_seen), device.name || device.model || device.hwid,
+      [owner ? owner.username : 'без аккаунта', device.app_version, device.node_name || device.server].filter(Boolean).join(' · '));
+  }).join('');
+
+  return '<div class="home-grid">' +
+    homePanel('Сводка', metrics([
+      { value: num(users.length), label: 'пользователей', hint: (users.length - blocked.length) + ' не заблокировано' },
+      { value: num(devices.length), label: 'устройств', hint: onlineDevices.length + ' онлайн' },
+      { value: num(vpnDevices.length), label: 'VPN включён', hint: 'из ' + devices.length + ' устройств' },
+      { value: num(providerCount), label: 'подписок', hint: withSubs.length + ' пользователей' },
+      { value: num(nodes), label: 'узлов', hint: 'по снимкам клиентов' },
+      { value: num(newFeedback), label: 'новых обращений', hint: state.feedback.length + ' всего' },
+      { value: num(eventsDay), label: 'событий за сутки', hint: state.events.length + ' всего' }
+    ]), { wide: true, extra: '<span class="muted" style="font-weight:400;font-size:11px">обновлено ' + esc(state.loadedAt ? dateText(state.loadedAt) : '—') + '</span>' }) +
+    homePanel('Пользователи', metrics([
+      { value: num(users.filter(function (u) { return u.status !== 'blocked' && !(expiresAt(u) && expiresAt(u) < now); }).length), label: 'активных', cls: 'green' },
+      { value: num(blocked.length), label: 'заблокировано', cls: blocked.length ? 'red' : '' },
+      { value: num(expired.length), label: 'истекло', cls: expired.length ? 'amber' : '' },
+      { value: num(expiring.length), label: 'истекает за 7 дней', cls: expiring.length ? 'amber' : '' },
+      { value: num(withSubs.length), label: 'с подпиской' }
+    ])) +
+    homePanel('Устройства', metrics([
+      { value: num(onlineDevices.length), label: 'онлайн', cls: 'green' },
+      { value: num(devices.length - onlineDevices.length), label: 'офлайн' },
+      { value: num(vpnDevices.length), label: 'VPN включён' },
+      { value: num(devices.length - vpnDevices.length), label: 'VPN выключен' },
+      { value: num(archived), label: 'в архиве' }
+    ])) +
+    homePanel('Трафик', metrics([
+      { value: bytes(traffic.sessionUp), label: 'сессия ↑' },
+      { value: bytes(traffic.sessionDown), label: 'сессия ↓' },
+      { value: bytes(traffic.totalUp), label: 'всего ↑' },
+      { value: bytes(traffic.totalDown), label: 'всего ↓' },
+      { value: bytes(devices.length ? totalTraffic / devices.length : 0), label: 'в среднем на устройство' }
+    ])) +
+    homePanel('Провайдеры и подписки', metrics([
+      { value: num(reports), label: 'проверок с устройств', cls: '' },
+      { value: num(healthy), label: 'успешных', cls: 'green' },
+      { value: num(failing), label: 'с ошибкой', cls: failing ? 'red' : '' },
+      { value: num(nodes), label: 'узлов всего' },
+      { value: num(withSubs.length), label: 'пользователей с подпиской' }
+    ])) +
+    homePanel('Обращения и команды', metrics([
+      { value: num(newFeedback), label: 'новых обращений', cls: newFeedback ? 'amber' : '' },
+      { value: num(state.feedback.length), label: 'обращений всего' },
+      { value: num(pendingCommands), label: 'команд в очереди', cls: pendingCommands ? 'amber' : '' },
+      { value: num(errorCommands), label: 'команд с ошибкой', cls: errorCommands ? 'red' : '' },
+      { value: num(eventsDay), label: 'событий за сутки' }
+    ])) +
+    homePanel('Версии и платформы', '<div class="split-2">' +
+      '<div><div class="hint" style="margin:0 0 8px">Версии приложения</div>' + bars(versionRows, devices.length) + '</div>' +
+      '<div><div class="hint" style="margin:0 0 8px">Платформы</div>' + bars(osRows, devices.length) + '</div>' +
+      '</div>', { wide: true }) +
+    homePanel('Требуют внимания', attention || '<div class="hint">Проблем не найдено.</div>') +
+    homePanel('Онлайн-устройства', onlineRows || '<div class="hint">Сейчас нет устройств онлайн.</div>') +
+    homePanel('Последние события', eventRows || '<div class="hint">Событий пока нет.</div>', { wide: true }) +
+  '</div>';
+}
+
+// ------------------------------------------------------------------ subscriptions
+function renderSubscriptions() {
+  var rows = [];
+  state.users.forEach(function (user) {
+    var sub = user.subscription && typeof user.subscription === 'object' ? user.subscription : {};
+    var providers = Array.isArray(sub.providers) ? sub.providers : [];
+    var devices = state.devices.filter(function (d) { return d.account_id === user.id && !d.archived; });
+    providers.forEach(function (provider) {
+      var id = provider.id || providerClientId(provider.name);
+      var snapshots = devices.map(function (device) {
+        var snap = deviceSubscription(device);
+        if (!snap) return null;
+        var list = Array.isArray(snap.providers) ? snap.providers : [];
+        var found = list.filter(function (item) {
+          return (item.id && item.id === id) || (provider.name && item.name === provider.name);
+        })[0] || null;
+        return { device: device, snapshot: snap, provider: found };
+      });
+      rows.push({ user: user, provider: provider, id: id, devices: devices, snapshots: snapshots, subscription: sub });
+    });
+  });
+
+  var needle = state.search;
+  var list = rows.filter(function (row) {
+    if (!needle) return true;
+    return [row.user.username, row.user.display_name, row.user.plan, row.provider.name, row.provider.url, row.id]
+      .join(' ').toLowerCase().indexOf(needle) >= 0;
+  });
+
+  var enabledCount = rows.filter(function (row) { return row.provider.enabled !== false; }).length;
+  var withSubs = state.users.filter(function (u) {
+    return u.subscription && Array.isArray(u.subscription.providers) && u.subscription.providers.length;
+  }).length;
+  var reports = 0, healthy = 0, failing = 0, nodes = 0;
+  rows.forEach(function (row) {
+    row.snapshots.forEach(function (snap) {
+      if (!snap.provider) return;
+      reports++;
+      nodes += Number(snap.provider.nodes) || 0;
+      if (snap.provider.ok === false) failing++; else healthy++;
+    });
+  });
+
+  var summary = metrics([
+    { value: num(rows.length), label: 'подписок', hint: withSubs + ' пользователей' },
+    { value: num(enabledCount), label: 'включено', cls: enabledCount ? 'green' : '' },
+    { value: num(reports), label: 'проверок с устройств' },
+    { value: num(healthy), label: 'успешных', cls: healthy ? 'green' : '' },
+    { value: num(failing), label: 'с ошибкой', cls: failing ? 'red' : '' },
+    { value: num(nodes), label: 'узлов всего' }
+  ]);
+
+  var body = '<div class="panel" style="margin-bottom:14px"><div class="panel-head"><i class="dot"></i>Сводка по подпискам' +
+    '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">ссылки видны только администратору</span></div>' + summary + '</div>';
+
+  body += list.length
+    ? '<div class="grid">' + list.map(subscriptionCard).join('') + '</div>'
+    : '<div class="empty"><b>Подписок нет</b>Добавьте провайдеров в карточке пользователя.</div>';
+
+  body += renderDeviceSubscriptions();
+  return body;
+}
+
+function subscriptionCard(row) {
+  var user = row.user;
+  var provider = row.provider;
+  var expired = expiresAt(user) && expiresAt(user) < Date.now();
+  var found = row.snapshots.filter(function (snap) { return !!snap.provider; });
+  var failed = found.filter(function (snap) { return snap.provider.ok === false; }).length;
+  var nodes = found.reduce(function (sum, snap) { return sum + (Number(snap.provider.nodes) || 0); }, 0);
+  var synced = '';
+  var selected = '';
+  found.forEach(function (snap) {
+    var stamp = snap.snapshot.syncedAt;
+    if (stamp && (!synced || new Date(stamp).getTime() > new Date(synced).getTime())) synced = stamp;
+    if (!selected && snap.snapshot.selected) selected = snap.snapshot.selected;
+  });
+
+  var deviceHtml = row.snapshots.map(function (snap) {
+    var title = '<div class="grow"><b>' + esc(snap.device.name || snap.device.model || snap.device.hwid) + '</b>' +
+      '<small>' + esc([snap.device.os, snap.device.app_version].filter(Boolean).join(' · ') || snap.device.hwid) + '</small></div>';
+    if (!snap.provider) {
+      return '<div class="sub-device">' + title + badge('нет данных', '') + '</div>';
+    }
+    return '<div class="sub-device">' + title +
+      (snap.provider.ok === false ? badge('ошибка', 'red') : badge('работает', 'green')) +
+      '<span class="muted">' + esc(snap.provider.nodes != null ? snap.provider.nodes + ' узлов' : '—') + '</span>' +
+      (snap.provider.error ? '<span style="color:#ffb4b6;font-size:10.5px;width:100%">' + esc(snap.provider.error) + '</span>' : '') +
+      '</div>';
+  }).join('');
+
+  var raw = {
+    provider: provider,
+    subscription: { autoSelect: row.subscription.autoSelect, routing: row.subscription.routing, updatedAt: row.subscription.updatedAt },
+    devices: row.snapshots.map(function (snap) {
+      return {
+        device: snap.device.name || snap.device.hwid,
+        provider: snap.provider,
+        syncedAt: snap.snapshot.syncedAt,
+        selected: snap.snapshot.selected,
+        errors: snap.snapshot.errors
+      };
+    })
+  };
+
+  return '<article class="card">' +
+    '<div class="card-head"><div style="min-width:0;flex:1">' +
+      '<div class="card-title">' + esc(provider.name || 'Без названия') + '</div>' +
+      '<div class="card-sub">' + esc(userLabel(user)) + ' · ' + esc(user.plan || 'без тарифа') + '</div></div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' +
+        (provider.enabled === false ? badge('выключена', '') : badge('включена', 'green')) +
+        (user.status === 'blocked' ? badge('заблокирован', 'red') : '') +
+        (expired ? badge('истекла', 'amber') : '') +
+      '</div></div>' +
+    '<div class="kv">' +
+      '<div><span>ID провайдера</span><b class="mono">' + esc(row.id) + '</b></div>' +
+      '<div><span>Пользователь</span><b>' + esc(user.username) + '</b></div>' +
+      '<div><span>Устройств с данными</span><b>' + esc(found.length + ' / ' + row.devices.length) + '</b></div>' +
+      '<div><span>Узлов</span><b>' + esc(num(nodes)) + '</b></div>' +
+      '<div><span>Проверка</span><b>' + esc(failed ? failed + ' с ошибкой' : (found.length ? 'все успешно' : 'нет данных')) + '</b></div>' +
+      '<div><span>Синхронизация</span><b>' + esc(synced ? dateText(synced) : '—') + '</b></div>' +
+      (selected ? '<div style="grid-column:1/-1"><span>Выбранный узел</span><b>' + esc(selected) + '</b></div>' : '') +
+      '<div style="grid-column:1/-1"><span>Ссылка подписки</span><b class="sub-url">' + esc(provider.url || '—') + '</b></div>' +
+    '</div>' +
+    (deviceHtml ? '<div class="sub-devices">' + deviceHtml + '</div>' : '<div class="hint">Устройства ещё не присылали снимок подписки.</div>') +
+    '<details><summary>JSON подписки и устройств</summary><pre>' + esc(JSON.stringify(raw, null, 2)) + '</pre></details>' +
+  '</article>';
+}
+
+function renderDeviceSubscriptions() {
+  var devices = state.devices.filter(function (d) { return !!deviceSubscription(d); });
+  var needle = state.search;
+  if (needle) {
+    devices = devices.filter(function (device) {
+      var owner = deviceOwner(device);
+      var sub = deviceSubscription(device);
+      var providers = Array.isArray(sub.providers) ? sub.providers : [];
+      return [device.name, device.hwid, owner && owner.username, providers.map(function (p) { return [p.id, p.name].join(' '); }).join(' ')]
+        .join(' ').toLowerCase().indexOf(needle) >= 0;
+    });
+  }
+  if (!devices.length) return '';
+  return '<div class="panel-head" style="margin:22px 0 10px"><i class="dot"></i>Снимки с устройств' +
+    '<span class="spacer"></span><span class="muted" style="font-weight:400;font-size:11px">что клиенты реально получили от провайдеров</span></div>' +
+    '<div class="grid">' + devices.map(deviceSubscriptionCard).join('') + '</div>';
+}
+
+function deviceSubscriptionCard(device) {
+  var sub = deviceSubscription(device);
+  var owner = deviceOwner(device);
+  var providers = Array.isArray(sub.providers) ? sub.providers : [];
+  var updated = sub.updatedAt || device.config_view_at;
+  var rows = providers.map(function (provider) {
+    return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', provider.ok === false ? 'red' : 'green') +
+      '<span class="muted" style="font-size:11.5px;flex:1">' + esc(provider.id || '') +
+      (provider.nodes != null ? ' · ' + esc(provider.nodes + ' узлов') : '') +
+      (provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
+  }).join('');
+  return '<article class="card' + (online(device) ? '' : ' offline') + '">' +
+    '<div class="card-head"><div style="min-width:0;flex:1">' +
+      '<div class="card-title">' + esc(device.name || device.model || device.hwid) + '</div>' +
+      '<div class="card-sub">' + esc(owner ? owner.username : 'без аккаунта') + ' · ' + esc(device.hwid) + '</div></div>' +
+      (online(device) ? badge('онлайн', 'green') : badge('офлайн', '')) +
+    '</div>' +
+    '<div class="kv">' +
+      '<div><span>Провайдеров</span><b>' + esc(providers.length) + '</b></div>' +
+      '<div><span>Узлов</span><b>' + esc(num(sub.nodesTotal != null ? sub.nodesTotal : 0)) + '</b></div>' +
+      '<div><span>Выбранный узел</span><b>' + esc(sub.selected || sub.nodeName || '—') + '</b></div>' +
+      '<div><span>Синхронизация</span><b>' + esc(updated ? dateText(updated) : '—') + '</b></div>' +
+    '</div>' +
+    (rows ? '<div style="margin-top:12px">' + rows + '</div>' : '<div class="hint">Провайдеров в снимке нет.</div>') +
+    (Array.isArray(sub.errors) && sub.errors.length ? '<div class="hint" style="color:#ffb4b6">' + sub.errors.map(esc).join('<br>') + '</div>' : '') +
+    '<details><summary>Сырой JSON подписки</summary><pre>' + esc(JSON.stringify(sub, null, 2)) + '</pre></details>' +
+  '</article>';
 }
 
 // ------------------------------------------------------------------ modal
