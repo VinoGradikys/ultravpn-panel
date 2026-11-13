@@ -145,6 +145,16 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0d;border:1px sol
 .sub-device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11.5px}
 .sub-device .grow{flex:1;min-width:0}
 .sub-device small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.sub-preview{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface2)}
+.sub-preview-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;font-weight:600}
+.sub-preview-head .spacer{flex:1}
+.sub-preview-meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:11px;margin-top:5px}
+.node-list{max-height:230px;overflow:auto;margin-top:8px;border-top:1px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:3px}
+.node-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:baseline;font-size:11.5px}
+.node-row b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-row span{color:var(--muted2);font-size:10.5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:nowrap}
+.node-more{color:var(--muted2);font-size:10.5px;padding-top:2px}
+.sub-preview details summary{cursor:pointer;font-size:11.5px;color:var(--muted);margin-top:8px}
 .split-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .chart{display:block;width:100%;height:auto;overflow:visible}
 .chart-caption{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11.5px;font-weight:600;margin-bottom:5px}
@@ -552,17 +562,19 @@ function renderAppView(device) {
   }
   if (subscription) {
     var providers = Array.isArray(subscription.providers) ? subscription.providers : [];
+    var expiredCount = providers.filter(providerExpired).length;
     html += '<div class="kv" style="margin-top:12px">' +
-      '<div><span>Провайдеров</span><b>' + providers.length + '</b></div>' +
+      '<div><span>Провайдеров</span><b>' + providers.length + (expiredCount ? ' (' + expiredCount + ' истекли)' : '') + '</b></div>' +
       '<div><span>Узлов</span><b>' + esc(subscription.nodesTotal != null ? subscription.nodesTotal : '—') + '</b></div>' +
       '<div><span>Выбранный узел</span><b>' + esc(subscription.selected || subscription.nodeName || '—') + '</b></div>' +
       '<div><span>Синхронизация</span><b>' + esc(subscription.syncedAt ? dateText(subscription.syncedAt) : '—') + '</b></div>' +
       '</div>';
     if (providers.length) {
       html += '<div style="margin-top:10px">' + providers.map(function (provider) {
-        return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', provider.ok === false ? 'red' : 'green') +
-          '<span class="muted" style="font-size:11.5px">' + esc(provider.nodes != null ? provider.nodes + ' узлов' : '') +
-          (provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
+        var isExpired = providerExpired(provider);
+        return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', isExpired ? '' : (provider.ok === false ? 'red' : 'green')) +
+          '<span class="muted" style="font-size:11.5px">' + esc(isExpired ? 'подписка истекла' : (provider.nodes != null ? provider.nodes + ' узлов' : '')) +
+          (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
       }).join('') + '</div>';
     }
     if (Array.isArray(subscription.errors) && subscription.errors.length) {
@@ -960,6 +972,17 @@ function deviceSubscription(device) {
   var view = device.config_view && typeof device.config_view === 'object' ? device.config_view : null;
   return view && view.subscription && typeof view.subscription === 'object' ? view.subscription : null;
 }
+function catalogSubscription(id) {
+  if (!id) return null;
+  return state.subscriptions.filter(function (item) { return item.id === id; })[0] || null;
+}
+function providerExpired(provider) {
+  var item = catalogSubscription(provider && provider.id);
+  return !!(item && subscriptionExpired(item));
+}
+function providerFailed(provider) {
+  return !!provider && provider.ok === false && !providerExpired(provider);
+}
 function userLabel(user) {
   return user.display_name ? user.username + ' · ' + user.display_name : user.username;
 }
@@ -1153,7 +1176,7 @@ function renderHome() {
     return u.subscription && Array.isArray(u.subscription.providerIds) && u.subscription.providerIds.length;
   });
   var providerCount = state.subscriptions.length;
-  var reports = 0, healthy = 0, failing = 0, nodes = 0;
+  var reports = 0, healthy = 0, failing = 0, expiredReports = 0, nodes = 0;
   var failedProviders = [];
   devices.forEach(function (device) {
     var sub = deviceSubscription(device);
@@ -1161,7 +1184,9 @@ function renderHome() {
     sub.providers.forEach(function (provider) {
       reports++;
       nodes += Number(provider.nodes) || 0;
-      if (provider.ok === false) {
+      if (providerExpired(provider)) {
+        expiredReports++;
+      } else if (providerFailed(provider)) {
         failing++;
         failedProviders.push({ device: device, provider: provider });
       } else healthy++;
@@ -1232,8 +1257,9 @@ function renderHome() {
       ], bytes(totalTraffic), 'ТРАФИК') +
       donutChart([
         { key: 'Успешные', count: healthy, color: CHART_COLORS[2] },
-        { key: 'С ошибкой', count: failing, color: CHART_COLORS[0] }
-      ], num(reports), 'ПРОВЕРОК') +
+        { key: 'С ошибкой', count: failing, color: CHART_COLORS[0] },
+        { key: 'Истекли', count: expiredReports, color: CHART_COLORS[3] }
+      ].filter(function (row) { return row.count > 0; }), num(reports), 'ПРОВЕРОК') +
       '</div>', { wide: true }) +
     homePanel('Пользователи', metrics([
       { value: num(users.filter(function (u) { return u.status !== 'blocked' && !(expiresAt(u) && expiresAt(u) < now); }).length), label: 'активных', cls: 'green' },
@@ -1261,6 +1287,7 @@ function renderHome() {
       { value: num(reports), label: 'проверок с устройств', cls: '' },
       { value: num(healthy), label: 'успешных', cls: 'green' },
       { value: num(failing), label: 'с ошибкой', cls: failing ? 'red' : '' },
+      { value: num(expiredReports), label: 'истекли', cls: expiredReports ? 'amber' : '' },
       { value: num(nodes), label: 'узлов всего' },
       { value: num(withSubs.length), label: 'пользователей с доступом' }
     ])) +
@@ -1302,6 +1329,54 @@ function subscriptionSnapshots(item) {
   return result;
 }
 
+function subscriptionExpired(item) {
+  var expire = Number(item && item.traffic && item.traffic.expire) || 0;
+  if (!expire) return false;
+  var at = expire > 1e12 ? expire : expire * 1000;
+  return at <= Date.now();
+}
+
+function expireText(traffic) {
+  var expire = Number(traffic && traffic.expire) || 0;
+  if (!expire) return 'без ограничения';
+  var at = expire > 1e12 ? expire : expire * 1000;
+  var text = new Date(at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return at <= Date.now() ? text + ' · истёк' : text;
+}
+
+function nodeListHtml(nodes, limit) {
+  var list = Array.isArray(nodes) ? nodes.slice(0, limit || 300) : [];
+  if (!list.length) return '<div class="hint" style="margin:6px 0 0">Список серверов пока не загружен.</div>';
+  var html = '<div class="node-list">' + list.map(function (node) {
+    return '<div class="node-row"><b title="' + esc(node.name || node.server) + '">' + esc(node.name || node.server) +
+      '</b><span>' + esc((node.protocol ? node.protocol + ' · ' : '') + node.server + ':' + node.port) + '</span></div>';
+  }).join('') + '</div>';
+  if (Array.isArray(nodes) && nodes.length > list.length) {
+    html += '<div class="node-more">… ещё ' + esc(nodes.length - list.length) + ' серверов</div>';
+  }
+  return html;
+}
+
+function subscriptionPreviewHtml(preview, limit) {
+  if (!preview) return '';
+  var nodes = Array.isArray(preview.nodes) ? preview.nodes : [];
+  var total = Number(preview.nodesTotal) || nodes.length;
+  var traffic = preview.traffic || null;
+  var meta = [];
+  if (total) meta.push('серверов: ' + num(total));
+  if (traffic) {
+    meta.push('трафик: ' + bytes((Number(traffic.upload) || 0) + (Number(traffic.download) || 0)) +
+      (Number(traffic.total) ? ' из ' + bytes(traffic.total) : ''));
+    meta.push('до ' + expireText(traffic));
+  }
+  return '<div class="sub-preview">' +
+    '<div class="sub-preview-head"><b>' + esc(preview.name || 'Подписка') + '</b><span class="spacer"></span>' +
+      (subscriptionExpired(preview) ? badge('истекла', 'red') : badge('загружена', 'green')) + '</div>' +
+    (meta.length ? '<div class="sub-preview-meta"><span>' + meta.map(esc).join('</span><span>') + '</span></div>' : '') +
+    nodeListHtml(nodes, limit || 30) +
+    '</div>';
+}
+
 function renderSubscriptions() {
   var needle = state.search;
   var list = state.subscriptions.filter(function (item) {
@@ -1315,12 +1390,14 @@ function renderSubscriptions() {
     var sub = user.subscription && typeof user.subscription === 'object' ? user.subscription : {};
     assigned += Array.isArray(sub.providerIds) ? sub.providerIds.length : 0;
   });
-  var reports = 0, healthy = 0, failing = 0, nodes = 0;
+  var reports = 0, healthy = 0, failing = 0, expiredReports = 0, nodes = 0;
   state.subscriptions.forEach(function (item) {
     subscriptionSnapshots(item).forEach(function (snap) {
       reports++;
       nodes += Number(snap.provider.nodes) || 0;
-      if (snap.provider.ok === false) failing++; else healthy++;
+      if (providerExpired(snap.provider)) expiredReports++;
+      else if (providerFailed(snap.provider)) failing++;
+      else healthy++;
     });
   });
 
@@ -1331,6 +1408,7 @@ function renderSubscriptions() {
     { value: num(reports), label: 'проверок с устройств' },
     { value: num(healthy), label: 'успешных', cls: healthy ? 'green' : '' },
     { value: num(failing), label: 'с ошибкой', cls: failing ? 'red' : '' },
+    { value: num(expiredReports), label: 'истекли', cls: expiredReports ? 'amber' : '' },
     { value: num(nodes), label: 'узлов всего' }
   ]);
 
@@ -1349,28 +1427,95 @@ function renderSubscriptions() {
 
 function openAddSubscriptionModal(item) {
   var current = item || {};
+  var initialPreview = Array.isArray(current.nodes) && current.nodes.length ? {
+    name: current.name,
+    nodes: current.nodes,
+    nodesTotal: current.nodesTotal || current.nodes.length,
+    traffic: current.traffic || null
+  } : null;
   openModal(item ? 'Изменить подписку' : 'Новая подписка', '' +
-    '<div class="field"><label>Название</label><input class="input" id="subName" placeholder="Например, Основная" value="' + esc(current.name || '') + '"></div>' +
-    '<div class="field"><label>Ссылка подписки</label><input class="input" id="subUrl" placeholder="https://…" autocomplete="off" value="' + esc(current.url || '') + '"></div>' +
-    '<label class="check"><input type="checkbox" id="subEnabled"' + (current.enabled !== false ? ' checked' : '') + '> Включена</label>' +
+    '<div class="field"><label>Ссылка подписки</label><input class="input" id="subUrl" placeholder="https://… или happ://…" autocomplete="off" value="' + esc(current.url || '') + '"></div>' +
+    '<div class="hint" id="subPreviewHint" style="margin-top:8px">Название, срок действия и список серверов загрузятся автоматически.</div>' +
+    '<div id="subPreview">' + (initialPreview ? subscriptionPreviewHtml(initialPreview, 20) : '') + '</div>' +
+    '<label class="check" style="margin-top:10px"><input type="checkbox" id="subEnabled"' + (current.enabled !== false ? ' checked' : '') + '> Включена</label>' +
     '<div class="hint">Подписка сохраняется в общем каталоге и передаётся только тем пользователям, у которых она отмечена. В интерфейсе пользователя ссылки нет.</div>',
     async function () {
-      var name = $('subName').value.trim();
       var url = $('subUrl').value.trim();
       if (!url) { toast('Укажите ссылку подписки'); return false; }
-      var result = await panel('admin_save_subscription', {
-        subscription: {
-          id: current.id || '',
-          name: name || 'Подписка',
-          url: url,
-          enabled: $('subEnabled').checked
-        }
-      });
+      var preview = null;
+      try {
+        preview = JSON.parse($('subPreview').getAttribute('data-preview') || 'null');
+      } catch (error) {
+        preview = null;
+      }
+      var subscription = {
+        id: current.id || '',
+        url: url,
+        enabled: $('subEnabled').checked
+      };
+      if (preview) {
+        subscription.name = preview.name || '';
+        subscription.nodes = preview.nodes || [];
+        subscription.nodesTotal = preview.nodesTotal || (preview.nodes || []).length;
+        subscription.traffic = preview.traffic || null;
+        subscription.fetchedAt = preview.fetchedAt || Date.now();
+      }
+      var result = await panel('admin_save_subscription', { subscription: subscription });
       if (!result.ok) { toast(result.message || 'Ошибка'); return false; }
       toast(current.id ? 'Подписка обновлена' : 'Подписка добавлена');
       load();
       return true;
     });
+
+  var input = $('subUrl');
+  var previewBox = $('subPreview');
+  var hint = $('subPreviewHint');
+  var timer = null;
+  var lastUrl = '';
+
+  function setPreview(preview) {
+    previewBox.setAttribute('data-preview', preview ? JSON.stringify(preview) : '');
+    previewBox.innerHTML = preview ? subscriptionPreviewHtml(preview, 20) : '';
+  }
+
+  async function loadPreview() {
+    var url = input.value.trim();
+    if (!url) {
+      setPreview(null);
+      hint.textContent = 'Название, срок действия и список серверов загрузятся автоматически.';
+      return;
+    }
+    if (url === lastUrl) return;
+    lastUrl = url;
+    hint.textContent = 'Загрузка подписки…';
+    var result = await panel('admin_preview_subscription', { url: url });
+    if (input.value.trim() !== url) return;
+    if (!result.ok) {
+      setPreview(null);
+      hint.innerHTML = '<span style="color:#ffb4b6">Не удалось загрузить: ' + esc(result.message || 'ошибка') + '</span>';
+      return;
+    }
+    var preview = result.data.preview;
+    setPreview(preview);
+    hint.textContent = 'Название и список серверов загружены. Их можно проверить перед сохранением.';
+  }
+
+  function schedulePreview() {
+    if (timer) clearTimeout(timer);
+    if (input.value.trim() !== lastUrl) {
+      setPreview(null);
+      lastUrl = '';
+    }
+    timer = setTimeout(loadPreview, 700);
+  }
+
+  input.addEventListener('input', schedulePreview);
+  input.addEventListener('blur', function () { if (timer) clearTimeout(timer); loadPreview(); });
+  if (initialPreview && current.url) {
+    previewBox.setAttribute('data-preview', JSON.stringify(initialPreview));
+    lastUrl = current.url;
+  }
+  if (!current.url) setTimeout(function () { input.focus(); }, 60);
 }
 
 function openDeleteSubscriptionModal(item) {
@@ -1407,8 +1552,12 @@ $('view').addEventListener('click', function (event) {
 function subscriptionCard(item) {
   var users = subscriptionUserList(item);
   var snapshots = subscriptionSnapshots(item);
-  var failed = snapshots.filter(function (snap) { return snap.provider.ok === false; }).length;
-  var nodes = snapshots.reduce(function (sum, snap) { return sum + (Number(snap.provider.nodes) || 0); }, 0);
+  var failed = snapshots.filter(function (snap) { return providerFailed(snap.provider); }).length;
+  var liveNodes = snapshots.reduce(function (sum, snap) { return sum + (Number(snap.provider.nodes) || 0); }, 0);
+  var previewNodes = Array.isArray(item.nodes) ? item.nodes : [];
+  var catalogNodes = Number(item.nodesTotal) || previewNodes.length;
+  var nodes = catalogNodes || liveNodes;
+  var expired = subscriptionExpired(item);
   var synced = '';
   var selected = '';
   snapshots.forEach(function (snap) {
@@ -1419,12 +1568,14 @@ function subscriptionCard(item) {
 
   var deviceHtml = snapshots.map(function (snap) {
     var owner = deviceOwner(snap.device);
+    var snapExpired = expired || providerExpired(snap.provider);
     var title = '<div class="grow"><b>' + esc(snap.device.name || snap.device.model || snap.device.hwid) + '</b>' +
       '<small>' + esc([owner ? owner.username : 'без аккаунта', snap.device.os, snap.device.app_version].filter(Boolean).join(' · ')) + '</small></div>';
     return '<div class="sub-device">' + title +
-      (snap.provider.ok === false ? badge('ошибка', 'red') : badge('работает', 'green')) +
+      (snapExpired ? badge('истекла', 'red') : (snap.provider.ok === false ? badge('ошибка', 'red') : badge('работает', 'green'))) +
       '<span class="muted">' + esc(snap.provider.nodes != null ? snap.provider.nodes + ' узлов' : '—') + '</span>' +
-      (snap.provider.error ? '<span style="color:#ffb4b6;font-size:10.5px;width:100%">' + esc(snap.provider.error) + '</span>' : '') +
+      (!snapExpired && snap.provider.error ? '<span style="color:#ffb4b6;font-size:10.5px;width:100%">' + esc(snap.provider.error) + '</span>' : '') +
+      (snapExpired ? '<span class="muted" style="font-size:10.5px;width:100%">Подписка истекла — клиент больше не получает её серверы, старые ошибки загрузки не учитываются.</span>' : '') +
       '</div>';
   }).join('');
 
@@ -1447,19 +1598,26 @@ function subscriptionCard(item) {
       '<div class="card-title">' + esc(item.name || 'Без названия') + '</div>' +
       '<div class="card-sub mono">' + esc(item.id) + '</div></div>' +
       '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' +
-        (item.enabled === false ? badge('выключена', '') : badge('включена', 'green')) +
+        (expired ? badge('истекла', 'red') : (item.enabled === false ? badge('выключена', '') : badge('включена', 'green'))) +
         (failed ? badge(failed + ' с ошибкой', 'red') : '') +
       '</div></div>' +
     '<div class="kv">' +
       '<div><span>Пользователей</span><b>' + esc(users.length ? users.map(function (user) { return user.username; }).join(', ') : 'никому не выдана') + '</b></div>' +
       '<div><span>Устройств с данными</span><b>' + esc(snapshots.length) + '</b></div>' +
       '<div><span>Узлов</span><b>' + esc(num(nodes)) + '</b></div>' +
-      '<div><span>Проверка</span><b>' + esc(failed ? failed + ' с ошибкой' : (snapshots.length ? 'все успешно' : 'нет данных')) + '</b></div>' +
+      '<div><span>Срок действия</span><b>' + esc(item.traffic ? expireText(item.traffic) : 'неизвестно') + '</b></div>' +
+      '<div><span>Проверка</span><b>' + esc(expired ? 'не проверяется' : (failed ? failed + ' с ошибкой' : (snapshots.length ? 'все успешно' : 'нет данных'))) + '</b></div>' +
       '<div><span>Синхронизация</span><b>' + esc(synced ? dateText(synced) : '—') + '</b></div>' +
       '<div><span>Добавлена</span><b>' + esc(dateText(item.createdAt)) + '</b></div>' +
       (selected ? '<div style="grid-column:1/-1"><span>Выбранный узел</span><b>' + esc(selected) + '</b></div>' : '') +
       '<div style="grid-column:1/-1"><span>Ссылка подписки</span><b class="sub-url" title="' + esc(item.url || '') + '">' + esc(item.url || '—') + '</b></div>' +
     '</div>' +
+    (expired
+      ? '<div class="hint" style="color:#fbbf24;margin-top:8px">Подписка истекла — серверы больше не передаются клиентам.</div>'
+      : (item.fetchError ? '<div class="hint" style="color:#ffb4b6;margin-top:8px">Не удалось обновить данные: ' + esc(item.fetchError) + '</div>' : '')) +
+    (previewNodes.length
+      ? '<details class="sub-preview"' + (snapshots.length && !expired ? '' : ' open') + '><summary>Серверы подписки (' + esc(num(catalogNodes)) + ')</summary>' + nodeListHtml(previewNodes, 300) + '</details>'
+      : '') +
     (deviceHtml ? '<div class="sub-devices">' + deviceHtml + '</div>' : '<div class="hint">Устройства ещё не присылали снимок этой подписки.</div>') +
     '<div class="actions">' +
       '<button class="btn small" data-sub-edit="' + esc(item.id) + '">Изменить</button>' +
@@ -1491,12 +1649,14 @@ function deviceSubscriptionCard(device) {
   var sub = deviceSubscription(device);
   var owner = deviceOwner(device);
   var providers = Array.isArray(sub.providers) ? sub.providers : [];
+  var expiredCount = providers.filter(providerExpired).length;
   var updated = sub.updatedAt || device.config_view_at;
   var rows = providers.map(function (provider) {
-    return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', provider.ok === false ? 'red' : 'green') +
+    var isExpired = providerExpired(provider);
+    return '<div class="provider">' + badge(provider.name || provider.id || 'провайдер', isExpired ? '' : (provider.ok === false ? 'red' : 'green')) +
       '<span class="muted" style="font-size:11.5px;flex:1">' + esc(provider.id || '') +
-      (provider.nodes != null ? ' · ' + esc(provider.nodes + ' узлов') : '') +
-      (provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
+      (isExpired ? ' · подписка истекла' : (provider.nodes != null ? ' · ' + provider.nodes + ' узлов' : '')) +
+      (!isExpired && provider.error ? ' · ' + esc(provider.error) : '') + '</span></div>';
   }).join('');
   return '<article class="card' + (online(device) ? '' : ' offline') + '">' +
     '<div class="card-head"><div style="min-width:0;flex:1">' +
@@ -1505,7 +1665,7 @@ function deviceSubscriptionCard(device) {
       (online(device) ? badge('онлайн', 'green') : badge('офлайн', '')) +
     '</div>' +
     '<div class="kv">' +
-      '<div><span>Провайдеров</span><b>' + esc(providers.length) + '</b></div>' +
+      '<div><span>Провайдеров</span><b>' + esc(providers.length) + (expiredCount ? ' (' + expiredCount + ' истекли)' : '') + '</b></div>' +
       '<div><span>Узлов</span><b>' + esc(num(sub.nodesTotal != null ? sub.nodesTotal : 0)) + '</b></div>' +
       '<div><span>Выбранный узел</span><b>' + esc(sub.selected || sub.nodeName || '—') + '</b></div>' +
       '<div><span>Синхронизация</span><b>' + esc(updated ? dateText(updated) : '—') + '</b></div>' +
