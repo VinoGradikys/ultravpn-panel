@@ -1,6 +1,6 @@
 /* UltraVPN Admin — service worker.
    Кэширует оболочку PWA, но не трогает Supabase и авторизацию. */
-const CACHE = 'ultravpn-admin-v14';
+const CACHE = 'ultravpn-admin-v15';
 const SHELL = [
   './',
   './index.html',
