@@ -525,25 +525,84 @@ function clientSummary(device) {
   ].filter(Boolean).join(' · ');
 }
 
-function deviceGroupKey(device) {
+function deviceStableId(device) {
   if (!device) return '';
-  // Группируем только записи одного и того же устройства. Раньше ключ
-  // включал модель и редакцию, поэтому два одинаковых телефона одного
-  // пользователя склеивались в одну карточку и считались одним устройством.
-  var hwid = String(device.hwid || '').trim();
-  if (hwid) return 'hwid:' + hwid;
+  var direct = String(device.device_id || device.deviceId || '').trim();
+  if (direct) return direct;
+  var raw = device.raw;
+  var info = raw && typeof raw === 'object' ? raw.device : null;
+  var value = info && typeof info === 'object' ? (info.deviceId || info.device_id) : '';
+  return String(value || '').trim();
+}
+
+function deviceSignature(device) {
+  if (!device) return '';
+  // Модель и версия ОС отделяют два одинаковых телефона друг от друга.
+  // Редакция (Full/Lite) в подпись не входит: это одно и то же устройство.
+  var model = String(device.model || device.name || '').trim().toLowerCase();
+  if (!model) return '';
   return [
-    device.account_id || '',
     String(device.platform || device.os || '').toLowerCase(),
-    String(device.model || device.name || '').trim().toLowerCase(),
-    deviceEdition(device)
+    model,
+    String(device.os_version || '').trim().toLowerCase()
   ].join('|');
 }
 
+function deviceGroupKey(device) {
+  if (!device) return '';
+  var stable = deviceStableId(device);
+  if (stable) return 'dev:' + (device.account_id || '') + ':' + stable;
+  var signature = deviceSignature(device);
+  if (signature) return 'legacy:' + (device.account_id || '') + ':' + signature;
+  var hwid = String(device.hwid || '').trim();
+  return hwid ? 'hwid:' + hwid : 'unknown';
+}
+
 function deviceGroups(devices) {
+  var list = devices || [];
+  // Новые клиенты присылают постоянный deviceId (ANDROID_ID на Android).
+  // Он не меняется при переустановке и общий у Full/Lite, поэтому такие
+  // записи склеиваются точно. Для старых записей без deviceId используем
+  // модель и версию ОС: переустановки одного телефона попадают в одну
+  // карточку, а разные телефоны с разными версиями ОС — нет.
+  var stableGroups = {};
+  var stableByAccount = {};
+  list.forEach(function (device) {
+    var stable = deviceStableId(device);
+    if (!stable) return;
+    var account = device.account_id || '';
+    var key = 'dev:' + account + ':' + stable;
+    if (!stableGroups[key]) {
+      stableGroups[key] = { key: key, account: account, signatures: {} };
+      stableByAccount[account] = stableByAccount[account] || [];
+      stableByAccount[account].push(stableGroups[key]);
+    }
+    var signature = deviceSignature(device);
+    if (signature) stableGroups[key].signatures[signature] = true;
+  });
+
   var map = {};
-  (devices || []).forEach(function (device) {
+  list.forEach(function (device) {
     var key = deviceGroupKey(device);
+    if (!deviceStableId(device)) {
+      var account = device.account_id || '';
+      var signature = deviceSignature(device);
+      var candidates = (stableByAccount[account] || []).filter(function (group) {
+        return signature && group.signatures[signature];
+      });
+      if (candidates.length === 1) {
+        // Ровно одно обновлённое устройство с такой моделью и ОС — старые
+        // записи этого телефона (переустановки, Lite) относим к нему.
+        key = candidates[0].key;
+      } else if (!(stableByAccount[account] || []).length) {
+        // Обновлённых клиентов у аккаунта ещё нет: склеиваем переустановки
+        // по модели и версии ОС.
+        key = 'legacy:' + account + ':' + (signature || String(device.hwid || ''));
+      } else {
+        // Несколько одинаковых устройств — не угадываем, оставляем по HWID.
+        key = 'hwid:' + String(device.hwid || '');
+      }
+    }
     if (!map[key]) map[key] = { key: key, items: [] };
     map[key].items.push(device);
   });
@@ -779,8 +838,17 @@ function userCard(user) {
   (state.devices || []).forEach(function (device) {
     if (device.archived && device.hwid) archivedHwids[device.hwid] = true;
   });
+  // admin_list_users отдаёт только часть полей устройства (без модели,
+  // версии ОС и raw.device.deviceId). Дополняем записи из общего списка,
+  // иначе группировка по постоянному идентификатору не работает.
+  var fullDevices = {};
+  (state.devices || []).forEach(function (device) {
+    if (device.hwid) fullDevices[device.hwid] = device;
+  });
   var userDeviceGroups = deviceGroups(
-    (Array.isArray(user.devices) ? user.devices : []).filter(function (device) {
+    (Array.isArray(user.devices) ? user.devices : []).map(function (device) {
+      return fullDevices[device.hwid] || device;
+    }).filter(function (device) {
       return !device.archived && !archivedHwids[device.hwid];
     })
   );
